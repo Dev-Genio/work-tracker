@@ -13,6 +13,7 @@ export const config = {
     "/dashboard/:path*",
     "/track/:path*",
     "/timesheet/:path*",
+    "/report/:path*",
     "/chat/:path*",
     "/settings/:path*",
   ],

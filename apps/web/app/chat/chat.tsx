@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
 import { runAgent, type TraceStep } from "@/lib/agent";
+import { fetchTodayDigest } from "@/lib/digest";
 import {
   DEFAULT_SETTINGS,
   getOpenRouterKey,
@@ -36,6 +37,7 @@ export default function Chat() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [settings, setSettings] = useState<ServerSettings>(DEFAULT_SETTINGS);
+  const [primer, setPrimer] = useState<string>("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +48,9 @@ export default function Chat() {
         captureIntervalSec: s.captureIntervalSec, batchIntervalSec: s.batchIntervalSec,
       }))
       .catch(() => {});
+    // Pre-fetch today's digest so the model can answer "what did I do today"
+    // questions without burning a tool call.
+    fetchTodayDigest().then(setPrimer).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -78,6 +83,7 @@ export default function Chat() {
         model: settings.chatModel,
         history,
         userMessage: msg,
+        primer,
         maxSteps: 8,
         onStep: (step) => {
           setTurns((t) =>

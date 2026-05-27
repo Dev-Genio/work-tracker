@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   Activity,
   CalendarRange,
+  FileText,
   LayoutDashboard,
   MessageSquare,
   Settings as SettingsIcon,
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/track", label: "Track", icon: Activity },
   { href: "/timesheet", label: "Timesheet", icon: CalendarRange },
+  { href: "/report", label: "Report", icon: FileText },
   { href: "/chat", label: "Ask", icon: MessageSquare },
   { href: "/settings", label: "Settings", icon: SettingsIcon },
 ] as const;
