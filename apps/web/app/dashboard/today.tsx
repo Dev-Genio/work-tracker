@@ -173,58 +173,39 @@ export default function Today() {
 
   return (
     <div className="space-y-6">
-      {/* Range picker */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="flex gap-1.5 flex-wrap">
-              <RangeChip active={preset === "day"} onClick={() => pickPreset("day")}>
-                Today
-              </RangeChip>
-              <RangeChip active={preset === "week"} onClick={() => pickPreset("week")}>
-                This week
-              </RangeChip>
-              <RangeChip active={preset === "month"} onClick={() => pickPreset("month")}>
-                This month
-              </RangeChip>
-              <RangeChip
-                active={preset === "custom"}
-                onClick={() => pickPreset("custom")}
-              >
-                Custom
-              </RangeChip>
-            </div>
-            {preset === "custom" && (
-              <>
-                <div className="space-y-1.5">
-                  <Label htmlFor="from">From</Label>
-                  <Input
-                    id="from"
-                    type="date"
-                    value={from}
-                    onChange={(e) => setFrom(e.target.value)}
-                    className="w-40"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="to">To</Label>
-                  <Input
-                    id="to"
-                    type="date"
-                    value={to}
-                    onChange={(e) => setTo(e.target.value)}
-                    className="w-40"
-                  />
-                </div>
-              </>
-            )}
-            <div className="flex-1" />
-            <div className="text-sm text-muted-foreground">
-              {humanRange(from, to)}
-            </div>
+      {/* Range picker — inline strip, no card */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1.5">
+          <RangeChip active={preset === "day"} onClick={() => pickPreset("day")}>Today</RangeChip>
+          <RangeChip active={preset === "week"} onClick={() => pickPreset("week")}>This week</RangeChip>
+          <RangeChip active={preset === "month"} onClick={() => pickPreset("month")}>This month</RangeChip>
+          <RangeChip active={preset === "custom"} onClick={() => pickPreset("custom")}>Custom</RangeChip>
+        </div>
+        {preset === "custom" && (
+          <div className="flex items-center gap-2">
+            <Label htmlFor="from" className="text-xs text-muted-foreground">From</Label>
+            <Input
+              id="from"
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="h-8 w-36"
+            />
+            <Label htmlFor="to" className="text-xs text-muted-foreground">To</Label>
+            <Input
+              id="to"
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="h-8 w-36"
+            />
           </div>
-        </CardContent>
-      </Card>
+        )}
+        <div className="flex-1" />
+        <div className="text-xs text-muted-foreground tabular-nums">
+          {humanRange(from, to)}
+        </div>
+      </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -246,8 +227,8 @@ export default function Today() {
 
       {/* Heatmap */}
       <Card>
-        <CardHeader>
-          <CardTitle>Activity heatmap</CardTitle>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">Activity heatmap</CardTitle>
         </CardHeader>
         <CardContent>
           {heatmapDays.length === 0 ? (
@@ -266,13 +247,31 @@ export default function Today() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <BreakdownCard title="By project" data={stats?.byProject ?? []} loading={loadingList} />
         <BreakdownCard title="By app" data={stats?.byApp ?? []} loading={loadingList} />
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Daily activity</CardTitle>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Daily activity</CardTitle>
           </CardHeader>
           <CardContent>
             {dailyChart.length === 0 ? (
               <Skeleton className="h-56 w-full" />
+            ) : dailyChart.filter((d) => d.minutes > 0).length <= 1 ? (
+              // Recharts can't draw a continuous area/line from a single
+              // non-zero point. Fall back to a bar chart so the data shows.
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailyChart} margin={{ left: 8, right: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={10} interval="preserveStartEnd" />
+                    <YAxis stroke="var(--muted-foreground)" fontSize={10} />
+                    <RechartsTooltip
+                      cursor={{ fill: "var(--accent)", opacity: 0.4 }}
+                      contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                      formatter={(v) => [`${v} min`, "Tracked"]}
+                    />
+                    <Bar dataKey="minutes" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             ) : (
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
@@ -291,7 +290,14 @@ export default function Today() {
                       contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
                       formatter={(v) => [`${v} min`, "Tracked"]}
                     />
-                    <Area type="monotone" dataKey="minutes" stroke="var(--chart-1)" fill="url(#dailyFill)" strokeWidth={2} />
+                    <Area
+                      type="monotone"
+                      dataKey="minutes"
+                      stroke="var(--chart-1)"
+                      fill="url(#dailyFill)"
+                      strokeWidth={2}
+                      dot={{ r: 2, fill: "var(--chart-1)" }}
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -302,8 +308,8 @@ export default function Today() {
 
       {/* Timeline */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium flex items-center justify-between">
             <span>Timeline</span>
             <div className="flex items-center gap-2 text-sm font-normal text-muted-foreground">
               <span>Per page</span>
@@ -389,8 +395,8 @@ export default function Today() {
       {/* Commits */}
       {commits && commits.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>Commits</CardTitle>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Commits</CardTitle>
           </CardHeader>
           <CardContent>
             <ul className="space-y-2 text-sm">
@@ -435,12 +441,14 @@ function Stat({
   icon, label, value,
 }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+    <Card className="py-4 gap-1">
+      <CardContent className="px-4">
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           {icon} {label}
         </div>
-        <div className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">{value}</div>
+        <div className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">
+          {value}
+        </div>
       </CardContent>
     </Card>
   );
@@ -455,8 +463,8 @@ function BreakdownCard({
   }));
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
       </CardHeader>
       <CardContent>
         {loading ? (
