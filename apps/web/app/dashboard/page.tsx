@@ -12,8 +12,10 @@ export default async function DashboardPage() {
   return (
     <AppShell user={user}>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
-        <p className="text-sm text-muted-foreground">A look at what you worked on so far.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <p className="text-sm text-muted-foreground">
+          Pick a range or use the heatmap to spot patterns over time.
+        </p>
       </div>
       <Today />
     </AppShell>
