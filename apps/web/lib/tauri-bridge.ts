@@ -1,6 +1,11 @@
 "use client";
 
-import type { GhCommit, ProcessInfo, SystemStats } from "@work-tracker/shared";
+import type {
+  GhCommit,
+  GhTodayResult,
+  ProcessInfo,
+  SystemStats,
+} from "@work-tracker/shared";
 import { isTauri } from "@work-tracker/shared";
 
 // Lazy-load the Tauri API so the bundle still works in the browser.
@@ -49,12 +54,25 @@ export async function onTrayToggle(cb: () => void): Promise<() => void> {
   return unlisten;
 }
 
-export async function ghTodayCommits(since?: string): Promise<GhCommit[]> {
-  if (!isTauri()) return [];
+/** Detailed result so callers can surface verbose error info to the user. */
+export async function ghTodayDetailed(since?: string): Promise<GhTodayResult> {
+  if (!isTauri()) return { commits: [], warnings: [] };
   try {
-    return await invoke<GhCommit[]>("gh_today_commits", { since });
-  } catch {
-    // Likely: gh not installed, not logged in, or no network. Treat as empty.
-    return [];
+    return await invoke<GhTodayResult>("gh_today_commits", { since });
+  } catch (e) {
+    // Invoke-level failure (e.g. spawn-failed) — surface as a warning.
+    return { commits: [], warnings: [String(e)] };
   }
+}
+
+/** Convenience wrapper for callers that just want the commit list. */
+export async function ghTodayCommits(since?: string): Promise<GhCommit[]> {
+  const r = await ghTodayDetailed(since);
+  return r.commits;
+}
+
+/** Output of `gh auth status` for diagnostics in Settings. */
+export async function ghAuthStatus(): Promise<string> {
+  if (!isTauri()) return "Not running in Tauri — gh diagnostics unavailable.";
+  return invoke<string>("gh_auth_status");
 }

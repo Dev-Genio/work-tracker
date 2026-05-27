@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { CaptureLoop } from "@/lib/capture";
 import { callVlm } from "@/lib/vlm";
-import { ghTodayCommits, listProcesses, onTrayToggle, systemStats } from "@/lib/tauri-bridge";
+import { ghTodayDetailed, listProcesses, onTrayToggle, systemStats } from "@/lib/tauri-bridge";
 import {
   DEFAULT_SETTINGS,
   getOpenRouterKey,
@@ -68,16 +68,27 @@ export default function Tracker() {
     }
     append("info", `Batch ready: ${batch.frames.length} frames`);
 
-    const [processes, system, commits] = await Promise.all([
+    const [processes, system, gh] = await Promise.all([
       listProcesses(20),
       systemStats(),
-      ghTodayCommits(),
+      ghTodayDetailed(),
     ]);
+    // Surface any gh failure verbosely — once, on the first occurrence per
+    // session — so SAML/auth issues don't silently strip commits from batches.
+    if (gh.warnings.length > 0) {
+      for (const w of gh.warnings) {
+        append("err", w);
+      }
+      toast.error("GitHub data partial — see Activity log for details.", {
+        description: gh.warnings[0].split("\n").slice(-1)[0],
+        duration: 8000,
+      });
+    }
     const enriched = {
       ...batch,
       processes: processes.length > 0 ? processes : undefined,
       system: system ?? undefined,
-      commits: commits.length > 0 ? commits : undefined,
+      commits: gh.commits.length > 0 ? gh.commits : undefined,
     };
 
     try {
@@ -247,11 +258,11 @@ export default function Tracker() {
                   {log.map((l, i) => (
                     <li key={i} className="flex gap-2">
                       <span className="text-muted-foreground tabular-nums shrink-0">{l.t}</span>
-                      <span className={
+                      <span className={`whitespace-pre-wrap break-words ${
                         l.kind === "err" ? "text-destructive" :
                         l.kind === "ok" ? "text-foreground" :
                         "text-muted-foreground"
-                      }>{l.msg}</span>
+                      }`}>{l.msg}</span>
                     </li>
                   ))}
                 </ul>

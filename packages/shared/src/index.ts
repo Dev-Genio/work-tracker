@@ -39,6 +39,13 @@ export interface GhCommit {
   committedAt: string;
 }
 
+export interface GhTodayResult {
+  commits: GhCommit[];
+  /** Verbose, multi-line explanations of any per-query failures
+   *  (SAML/SSO, missing scopes, rate limits, network, etc.). */
+  warnings: string[];
+}
+
 export interface CaptureBatch {
   startedAt: string;
   endedAt: string;

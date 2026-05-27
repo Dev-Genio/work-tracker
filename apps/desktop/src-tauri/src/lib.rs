@@ -21,6 +21,7 @@ pub fn run() {
             sysinfo_cmds::list_processes,
             sysinfo_cmds::system_stats,
             gh_cmds::gh_today_commits,
+            gh_cmds::gh_auth_status,
             autostart::autostart_status,
             autostart::set_autostart,
         ])

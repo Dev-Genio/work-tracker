@@ -35,7 +35,7 @@ import {
   setOpenRouterKey,
   type ServerSettings,
 } from "@/lib/settings-store";
-import { isAutostartEnabled, setAutostart } from "@/lib/tauri-bridge";
+import { ghAuthStatus, isAutostartEnabled, setAutostart } from "@/lib/tauri-bridge";
 
 type KeyStatus = "unknown" | "checking" | "valid" | "invalid";
 
@@ -50,6 +50,8 @@ export default function SettingsForm() {
   const [saving, setSaving] = useState(false);
   const [tauri, setTauri] = useState(false);
   const [autostartOn, setAutostartOn] = useState(false);
+  const [ghStatus, setGhStatus] = useState<string>("");
+  const [ghChecking, setGhChecking] = useState(false);
 
   useEffect(() => {
     const k = getOpenRouterKey() ?? "";
@@ -225,6 +227,47 @@ export default function SettingsForm() {
           />
         </CardContent>
       </Card>
+
+      {tauri && (
+        <Card>
+          <CardHeader>
+            <CardTitle>GitHub</CardTitle>
+            <CardDescription>
+              Diagnostics for the local <code>gh</code> CLI. Use this to see
+              which orgs are authorized and what scopes your token has.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                disabled={ghChecking}
+                onClick={async () => {
+                  setGhChecking(true);
+                  try {
+                    setGhStatus(await ghAuthStatus());
+                  } catch (e) {
+                    setGhStatus(String(e));
+                  } finally {
+                    setGhChecking(false);
+                  }
+                }}
+              >
+                {ghChecking && <Loader2 className="h-4 w-4 animate-spin" />}
+                Check gh status
+              </Button>
+              <p className="text-xs text-muted-foreground self-center">
+                Missing private commits? Run <code>gh auth refresh -s read:org,repo</code> in your terminal.
+              </p>
+            </div>
+            {ghStatus && (
+              <pre className="text-xs font-mono whitespace-pre-wrap bg-muted/40 border rounded-md p-3 max-h-64 overflow-auto">
+                {ghStatus}
+              </pre>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {tauri && (
         <Card>
