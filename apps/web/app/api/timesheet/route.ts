@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, asc, eq, gte, lte } from "drizzle-orm";
-import { auth } from "@/lib/auth/server";
+import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 import { parseRange, isoDate } from "@/lib/time";
 
@@ -14,13 +14,13 @@ export interface TimesheetRow {
 }
 
 export async function GET(req: Request) {
-  const session = await auth.getSession();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const url = new URL(req.url);
   const { from, to } = parseRange(url.searchParams);
   const groupBy = (url.searchParams.get("groupBy") ?? "project") as GroupBy;
-  const userId = session.user.id;
+  const userId = user.id;
 
   const rows = await db
     .select({

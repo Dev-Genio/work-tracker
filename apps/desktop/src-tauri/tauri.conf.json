@@ -4,8 +4,8 @@
   "version": "0.0.1",
   "identifier": "dev.devgenio.worktracker",
   "build": {
-    "beforeDevCommand": "pnpm --filter @work-tracker/web dev",
-    "beforeBuildCommand": "pnpm --filter @work-tracker/web build",
+    "beforeDevCommand": "npm --workspace @work-tracker/web run dev",
+    "beforeBuildCommand": "npm --workspace @work-tracker/web run build",
     "devUrl": "http://localhost:3000",
     "frontendDist": "../../web/.next"
   },

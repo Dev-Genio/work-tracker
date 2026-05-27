@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
-import { auth } from "@/lib/auth/server";
+import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 
 interface IngestBody {
@@ -28,8 +28,8 @@ interface IngestBody {
 }
 
 export async function POST(req: Request) {
-  const session = await auth.getSession();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   let body: IngestBody;
   try {
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
 
-  const userId = session.user.id;
+  const userId = user.id;
 
   const [batch] = await db
     .insert(schema.captureBatches)

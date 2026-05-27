@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { auth } from "@/lib/auth/server";
+import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 import { DEFAULT_SETTINGS } from "@/lib/settings-store";
 
 export async function GET() {
-  const session = await auth.getSession();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const userId = session.user.id;
+  const userId = user.id;
   const row = await db
     .select()
     .from(schema.settings)
@@ -30,8 +30,8 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const session = await auth.getSession();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = (await req.json()) as Partial<{
     vlmModel: string;
@@ -48,7 +48,7 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "vlmModel and chatModel required" }, { status: 400 });
   }
 
-  const userId = session.user.id;
+  const userId = user.id;
   await db
     .insert(schema.settings)
     .values({

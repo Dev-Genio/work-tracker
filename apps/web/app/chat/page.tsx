@@ -29,6 +29,7 @@ export default function ChatPage() {
       .then((s) =>
         setSettings({
           vlmModel: s.vlmModel,
+          chatModel: s.chatModel,
           captureIntervalSec: s.captureIntervalSec,
           batchIntervalSec: s.batchIntervalSec,
         }),
@@ -173,7 +174,7 @@ export default function ChatPage() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Ask anything about your tracked work…"
-          style={input}
+          style={inputStyle}
         />
         <button type="submit" style={{ ...btn, background: "var(--accent)" }}>
           Send
@@ -220,7 +221,7 @@ const traceCard: React.CSSProperties = {
   borderRadius: 8,
   padding: "8px 12px",
 };
-const input: React.CSSProperties = {
+const inputStyle: React.CSSProperties = {
   flex: 1,
   background: "#0a0a0a",
   color: "var(--fg)",

@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth/server";
+import { requireUser } from "@/lib/auth/session";
 import Today from "./today";
 
 export default async function DashboardPage() {
-  const session = await auth.getSession();
-  if (!session) redirect("/sign-in");
+  const user = await requireUser();
+  if (!user) redirect("/sign-in");
 
   return (
     <main
@@ -26,7 +26,7 @@ export default async function DashboardPage() {
           <Link href="/chat">Ask</Link>
           <Link href="/settings">Settings</Link>
           <span style={{ color: "var(--muted)" }}>
-            {session.user.email ?? session.user.id}
+            {user.email ?? user.id}
           </span>
         </div>
       </header>

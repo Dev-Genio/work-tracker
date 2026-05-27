@@ -15,9 +15,9 @@ packages/
 ## Dev
 
 ```sh
-pnpm install
-pnpm dev            # web at http://localhost:3000
-pnpm tauri:dev      # desktop window pointed at the web dev server
+npm install
+npm run dev            # web at http://localhost:3000
+npm run tauri:dev      # desktop window pointed at the web dev server
 ```
 
 ## Phases

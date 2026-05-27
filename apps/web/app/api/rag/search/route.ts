@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { and, asc, desc, eq, gte, ilike, lte, or, sql } from "drizzle-orm";
-import { auth } from "@/lib/auth/server";
+import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 import { parseRange } from "@/lib/time";
 
 export async function GET(req: Request) {
-  const session = await auth.getSession();
-  if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const url = new URL(req.url);
   const { from, to } = parseRange(url.searchParams);
@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   const app = url.searchParams.get("app");
   const project = url.searchParams.get("project");
   const limit = clamp(Number(url.searchParams.get("limit") ?? 20), 1, 100);
-  const userId = session.user.id;
+  const userId = user.id;
 
   const conds = [
     eq(schema.vlmSummaries.userId, userId),

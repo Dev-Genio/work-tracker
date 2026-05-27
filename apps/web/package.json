@@ -13,16 +13,16 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
-    "@work-tracker/shared": "workspace:*",
+    "@work-tracker/shared": "*",
     "@tauri-apps/api": "^2.1.1",
-    "@neondatabase/auth": "^0.1.0",
-    "@neondatabase/auth-ui": "^0.1.0",
-    "@neondatabase/neon-js": "^0.1.0",
+    "@neondatabase/auth": "0.3.0-beta",
+    "@neondatabase/auth-ui": "0.2.0-beta",
+    "@neondatabase/neon-js": "0.3.0-beta",
     "@neondatabase/serverless": "^0.10.4",
     "drizzle-orm": "^0.36.4",
-    "next": "15.0.3",
-    "react": "19.0.0-rc-66855b96-20241106",
-    "react-dom": "19.0.0-rc-66855b96-20241106",
+    "next": "^15.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "server-only": "^0.0.1"
   },
   "devDependencies": {

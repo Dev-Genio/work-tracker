@@ -20,7 +20,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <NeonAuthUIProvider authClient={authClient}>
+        {/* Cast: beta @neondatabase/auth-ui types expect org hooks that
+            createAuthClient doesn't expose. Runtime works either way. */}
+        <NeonAuthUIProvider authClient={authClient as never}>
           {children}
         </NeonAuthUIProvider>
       </body>

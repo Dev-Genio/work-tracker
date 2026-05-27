@@ -1,15 +1,15 @@
 import { and, asc, eq, gte, lte } from "drizzle-orm";
-import { auth } from "@/lib/auth/server";
+import { requireUser } from "@/lib/auth/session";
 import { db, schema } from "@/db";
 import { parseRange, isoDate, formatHm } from "@/lib/time";
 
 export async function GET(req: Request) {
-  const session = await auth.getSession();
-  if (!session) return new Response("unauthorized", { status: 401 });
+  const user = await requireUser();
+  if (!user) return new Response("unauthorized", { status: 401 });
 
   const url = new URL(req.url);
   const { from, to } = parseRange(url.searchParams);
-  const userId = session.user.id;
+  const userId = user.id;
 
   const rows = await db
     .select({
