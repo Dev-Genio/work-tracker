@@ -1,6 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+} from "recharts";
+import { Clock, GitCommit, Target } from "lucide-react";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import { formatHm } from "@/lib/time";
 
 interface Summary {
@@ -22,23 +37,23 @@ interface Commit {
 }
 
 export default function Today() {
-  const [summaries, setSummaries] = useState<Summary[]>([]);
-  const [commits, setCommits] = useState<Commit[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [summaries, setSummaries] = useState<Summary[] | null>(null);
+  const [commits, setCommits] = useState<Commit[] | null>(null);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/summaries").then((r) => r.json()),
       fetch("/api/commits").then((r) => r.json()),
-    ])
-      .then(([s, c]) => {
-        setSummaries(s.summaries ?? []);
-        setCommits(c.commits ?? []);
-      })
-      .finally(() => setLoading(false));
+    ]).then(([s, c]) => {
+      setSummaries(s.summaries ?? []);
+      setCommits(c.commits ?? []);
+    });
   }, []);
 
+  const loading = summaries === null || commits === null;
+
   const stats = useMemo(() => {
+    if (!summaries) return null;
     let total = 0;
     const byProject = new Map<string, number>();
     const byApp = new Map<string, number>();
@@ -47,143 +62,163 @@ export default function Today() {
       const d = Math.max(0, (new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 1000);
       total += d;
       focusSum += s.focusScore;
-      const proj = s.projectGuess ?? "(unknown)";
-      const app = s.app ?? "(unknown)";
-      byProject.set(proj, (byProject.get(proj) ?? 0) + d);
-      byApp.set(app, (byApp.get(app) ?? 0) + d);
+      byProject.set(s.projectGuess ?? "(unknown)", (byProject.get(s.projectGuess ?? "(unknown)") ?? 0) + d);
+      byApp.set(s.app ?? "(unknown)", (byApp.get(s.app ?? "(unknown)") ?? 0) + d);
     }
     return {
       total,
       focusAvg: summaries.length > 0 ? focusSum / summaries.length : 0,
       byProject: [...byProject.entries()].sort((a, b) => b[1] - a[1]),
-      byApp: [...byApp.entries()].sort((a, b) => b[1] - a[1]),
+      byApp: [...byApp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
     };
   }, [summaries]);
 
-  if (loading) return <p style={{ color: "var(--muted)" }}>Loading today…</p>;
-
-  if (summaries.length === 0 && commits.length === 0) {
+  if (loading) {
     return (
-      <p style={{ color: "var(--muted)" }}>
-        Nothing tracked today yet. Head to <a href="/track">Track</a> to start.
-      </p>
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-72 rounded-xl" />
+      </div>
     );
   }
 
+  if (summaries.length === 0 && commits.length === 0) {
+    return <Empty />;
+  }
+
   return (
-    <div style={{ display: "grid", gap: 16 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-        <Stat label="Tracked today" value={formatHm(stats.total)} />
-        <Stat label="Avg focus" value={`${(stats.focusAvg * 100).toFixed(0)}%`} />
-        <Stat label="Commits today" value={String(commits.length)} />
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Stat icon={<Clock className="h-4 w-4" />} label="Tracked today" value={formatHm(stats!.total)} />
+        <Stat icon={<Target className="h-4 w-4" />} label="Avg focus" value={`${(stats!.focusAvg * 100).toFixed(0)}%`} />
+        <Stat icon={<GitCommit className="h-4 w-4" />} label="Commits today" value={String(commits!.length)} />
       </div>
 
-      <Card title="By project">
-        <Bars items={stats.byProject} total={stats.total} />
-      </Card>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <BreakdownCard title="By project" data={stats!.byProject} />
+        <BreakdownCard title="By app" data={stats!.byApp} />
+      </div>
 
-      <Card title="By app">
-        <Bars items={stats.byApp.slice(0, 8)} total={stats.total} />
-      </Card>
-
-      <Card title="Timeline">
-        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
-          {summaries.map((s) => (
-            <li
-              key={s.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "120px 1fr 60px",
-                gap: 12,
-                fontSize: 13,
-                paddingBottom: 8,
-                borderBottom: "1px solid var(--border)",
-              }}
-            >
-              <span style={{ color: "var(--muted)" }}>
-                {fmtTime(s.startedAt)} – {fmtTime(s.endedAt)}
-              </span>
-              <span>
-                <strong>{s.projectGuess ?? "—"}</strong>
-                {s.app ? ` · ${s.app}` : ""} — {s.activity}
-              </span>
-              <span style={{ color: "var(--muted)", textAlign: "right" }}>
-                {(s.focusScore * 100).toFixed(0)}%
-              </span>
-            </li>
+      <Card>
+        <CardHeader>
+          <CardTitle>Timeline</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-0 pt-0">
+          {summaries.map((s, i) => (
+            <div key={s.id}>
+              {i > 0 && <Separator />}
+              <div className="grid grid-cols-[110px_1fr_auto] gap-4 py-3 text-sm">
+                <div className="text-muted-foreground tabular-nums">
+                  {fmtTime(s.startedAt)} – {fmtTime(s.endedAt)}
+                </div>
+                <div>
+                  <div className="flex flex-wrap gap-1.5 items-center mb-1">
+                    {s.projectGuess && <Badge variant="secondary">{s.projectGuess}</Badge>}
+                    {s.app && <Badge variant="outline">{s.app}</Badge>}
+                  </div>
+                  <div className="text-foreground/90">{s.activity}</div>
+                  {s.tasks.length > 0 && (
+                    <ul className="mt-1 text-xs text-muted-foreground list-disc pl-4">
+                      {s.tasks.slice(0, 3).map((t, j) => <li key={j}>{t}</li>)}
+                    </ul>
+                  )}
+                </div>
+                <div className="text-muted-foreground tabular-nums text-xs self-start">
+                  focus {(s.focusScore * 100).toFixed(0)}%
+                </div>
+              </div>
+            </div>
           ))}
-        </ul>
+        </CardContent>
       </Card>
 
-      {commits.length > 0 && (
-        <Card title="Commits today">
-          <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 6, fontSize: 13 }}>
-            {commits.map((c) => (
-              <li key={`${c.repo}:${c.sha}`}>
-                <code style={{ color: "var(--muted)" }}>{c.sha.slice(0, 7)}</code>{" "}
-                <strong>{c.repo}</strong> — {c.message}
-              </li>
-            ))}
-          </ul>
+      {commits!.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Commits today</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2 text-sm">
+              {commits!.map((c) => (
+                <li key={`${c.repo}:${c.sha}`} className="flex gap-2">
+                  <code className="text-muted-foreground tabular-nums">{c.sha.slice(0, 7)}</code>
+                  <span className="font-medium">{c.repo}</span>
+                  <span className="text-muted-foreground">— {c.message}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
         </Card>
       )}
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Empty() {
   return (
-    <div style={card}>
-      <div style={{ color: "var(--muted)", fontSize: 12 }}>{label}</div>
-      <div style={{ fontSize: 22, marginTop: 4 }}>{value}</div>
-    </div>
+    <Card>
+      <CardContent className="py-16 text-center">
+        <div className="mx-auto h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
+          <Clock className="h-6 w-6 text-muted-foreground" />
+        </div>
+        <h3 className="text-lg font-medium">No activity today yet</h3>
+        <p className="text-sm text-muted-foreground mt-1">
+          Head to <a href="/track" className="underline">Track</a> to start a session.
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <section style={card}>
-      <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--muted)" }}>{title}</h2>
-      <div style={{ marginTop: 12 }}>{children}</div>
-    </section>
+    <Card>
+      <CardContent className="pt-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {icon}
+          {label}
+        </div>
+        <div className="mt-2 text-3xl font-semibold tabular-nums tracking-tight">{value}</div>
+      </CardContent>
+    </Card>
   );
 }
 
-function Bars({ items, total }: { items: [string, number][]; total: number }) {
-  if (items.length === 0) return <p style={{ color: "var(--muted)", margin: 0 }}>—</p>;
+function BreakdownCard({ title, data }: { title: string; data: [string, number][] }) {
+  const chartData = data.slice(0, 8).map(([name, seconds]) => ({ name, minutes: Math.round(seconds / 60) }));
   return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {items.map(([k, v]) => {
-        const pct = total > 0 ? (v / total) * 100 : 0;
-        return (
-          <div key={k}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
-              <span>{k}</span>
-              <span style={{ color: "var(--muted)" }}>{formatHm(v)}</span>
-            </div>
-            <div style={{ height: 6, background: "#1a1a1a", borderRadius: 3, marginTop: 4 }}>
-              <div
-                style={{
-                  width: `${pct}%`,
-                  height: "100%",
-                  background: "var(--accent)",
-                  borderRadius: 3,
-                }}
-              />
-            </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {chartData.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No data.</p>
+        ) : (
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                <XAxis type="number" stroke="var(--muted-foreground)" fontSize={11} />
+                <YAxis dataKey="name" type="category" width={120} stroke="var(--muted-foreground)" fontSize={11} />
+                <RechartsTooltip
+                  cursor={{ fill: "var(--accent)", opacity: 0.4 }}
+                  contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                  formatter={(v) => [`${v} min`, ""]}
+                />
+                <Bar dataKey="minutes" fill="var(--chart-1)" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        );
-      })}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
-
-const card: React.CSSProperties = {
-  background: "var(--card)",
-  border: "1px solid var(--border)",
-  borderRadius: 12,
-  padding: 16,
-};
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });

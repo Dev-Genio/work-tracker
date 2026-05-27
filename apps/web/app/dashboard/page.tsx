@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
+import { AppShell } from "@/components/app-shell";
 import Today from "./today";
 
-// Reads cookies via auth.getSession(); never safe to prerender.
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
@@ -11,30 +10,12 @@ export default async function DashboardPage() {
   if (!user) redirect("/sign-in");
 
   return (
-    <main
-      style={{
-        maxWidth: 960,
-        margin: "0 auto",
-        padding: 32,
-        display: "flex",
-        flexDirection: "column",
-        gap: 20,
-      }}
-    >
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>Today</h1>
-        <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <Link href="/track">Track</Link>
-          <Link href="/timesheet">Timesheet</Link>
-          <Link href="/chat">Ask</Link>
-          <Link href="/settings">Settings</Link>
-          <span style={{ color: "var(--muted)" }}>
-            {user.email ?? user.id}
-          </span>
-        </div>
-      </header>
-
+    <AppShell user={user}>
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight">Today</h1>
+        <p className="text-sm text-muted-foreground">A look at what you worked on so far.</p>
+      </div>
       <Today />
-    </main>
+    </AppShell>
   );
 }
