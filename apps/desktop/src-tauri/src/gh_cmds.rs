@@ -48,15 +48,23 @@ pub async fn gh_today_commits(since: Option<String>) -> Result<Vec<GhCommit>, St
         return Err("invalid since date".into());
     }
 
-    let out = Command::new("gh")
-        .arg("search")
+    let mut cmd = Command::new("gh");
+    cmd.arg("search")
         .arg("commits")
         .arg("--author=@me")
         .arg(format!("--committer-date=>={}", date))
         .arg("--json")
         .arg("sha,commit,repository")
         .arg("--limit")
-        .arg("100")
+        .arg("100");
+
+    // Suppress the console window that flashes when shelling out to gh on
+    // Windows. CREATE_NO_WINDOW = 0x08000000. tokio::process::Command exposes
+    // creation_flags() directly on Windows.
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+
+    let out = cmd
         .output()
         .await
         .map_err(|e| format!("failed to spawn gh: {e}"))?;
