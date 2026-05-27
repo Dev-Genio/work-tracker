@@ -1,0 +1,34 @@
+[package]
+name = "work-tracker"
+version = "0.0.1"
+description = "work-tracker desktop shell"
+authors = ["devgenio"]
+edition = "2021"
+
+[lib]
+name = "work_tracker_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysinfo = "0.32"
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["process", "io-util", "macros", "rt-multi-thread"] }
+thiserror = "1"
+dirs = "5"
+
+[target.'cfg(windows)'.dependencies]
+mslnk = "0.1"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

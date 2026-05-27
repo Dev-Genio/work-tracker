@@ -1,0 +1,20 @@
+:root {
+  color-scheme: dark;
+  --bg: #0a0a0a;
+  --fg: #ededed;
+  --muted: #8a8a8a;
+  --accent: #7c5cff;
+  --card: #141414;
+  --border: #232323;
+}
+
+* { box-sizing: border-box; }
+html, body { padding: 0; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }

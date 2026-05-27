@@ -1,0 +1,147 @@
+"use client";
+
+import type { CaptureBatch, VlmSummary } from "@work-tracker/shared";
+
+const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+
+const SYSTEM_PROMPT = `You analyze a short series of screenshots from a user's work session, plus optional context (running processes, recent git commits, CPU/memory).
+Return ONE JSON object describing what the user was working on, matching this TypeScript type EXACTLY:
+
+{
+  "activity": string,           // 1-2 sentence description of what they were doing
+  "app": string | null,         // primary app/window (e.g. "VS Code", "Chrome - Gmail")
+  "projectGuess": string | null,// best guess at project/repo name
+  "tasks": string[],            // concrete tasks observed (commits, files edited, tickets, messages)
+  "focusScore": number          // 0..1, how focused vs scattered the session looked
+}
+
+Return ONLY the JSON. No prose, no markdown fences.`;
+
+export interface VlmCallOptions {
+  apiKey: string;
+  model: string;
+  batch: CaptureBatch;
+  maxFrames?: number; // cap to keep payload small; default 6
+}
+
+export interface VlmResult {
+  summary: VlmSummary;
+  raw: unknown;
+}
+
+export async function callVlm(opts: VlmCallOptions): Promise<VlmResult> {
+  const max = opts.maxFrames ?? 6;
+  // Sample evenly across the batch to keep payload bounded.
+  const picks = sampleEvenly(opts.batch.frames, max);
+
+  const content: Array<
+    | { type: "text"; text: string }
+    | { type: "image_url"; image_url: { url: string } }
+  > = [
+    {
+      type: "text",
+      text: buildUserText(opts.batch),
+    },
+    ...picks.map((f) => ({
+      type: "image_url" as const,
+      image_url: { url: `data:image/jpeg;base64,${f.jpegBase64}` },
+    })),
+  ];
+
+  const body = {
+    model: opts.model,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      { role: "user", content },
+    ],
+    response_format: { type: "json_object" },
+    temperature: 0.2,
+  };
+
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${opts.apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": typeof window !== "undefined" ? window.location.origin : "",
+      "X-Title": "work-tracker",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
+  const raw = await res.json();
+  const text: string = raw?.choices?.[0]?.message?.content ?? "";
+  const summary = parseSummary(text);
+  return { summary, raw };
+}
+
+function buildUserText(batch: CaptureBatch): string {
+  const lines: string[] = [];
+  lines.push(`Time window: ${batch.startedAt} → ${batch.endedAt}`);
+  lines.push(`Frame count attached: see images below.`);
+  if (batch.system) {
+    lines.push(
+      `System: CPU ${batch.system.cpuPercent.toFixed(0)}%, mem ${batch.system.memUsedMb}/${batch.system.memTotalMb} MB`,
+    );
+  }
+  if (batch.processes && batch.processes.length > 0) {
+    const top = batch.processes.slice(0, 12).map((p) => p.name).join(", ");
+    lines.push(`Top processes: ${top}`);
+  }
+  if (batch.commits && batch.commits.length > 0) {
+    lines.push(`Recent commits:`);
+    for (const c of batch.commits.slice(0, 10)) {
+      lines.push(`- [${c.repo}] ${c.sha.slice(0, 7)} ${c.message}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function sampleEvenly<T>(arr: T[], k: number): T[] {
+  if (arr.length <= k) return arr;
+  const step = (arr.length - 1) / (k - 1);
+  const out: T[] = [];
+  for (let i = 0; i < k; i++) out.push(arr[Math.round(i * step)]);
+  return out;
+}
+
+function parseSummary(text: string): VlmSummary {
+  const json = extractJson(text);
+  const obj = typeof json === "object" && json ? (json as Record<string, unknown>) : {};
+  return {
+    activity: str(obj.activity) ?? "(no activity)",
+    app: str(obj.app),
+    projectGuess: str(obj.projectGuess),
+    tasks: Array.isArray(obj.tasks) ? obj.tasks.filter((x): x is string => typeof x === "string") : [],
+    focusScore: clamp01(num(obj.focusScore)),
+  };
+}
+
+function extractJson(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(text.slice(start, end + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+function num(v: unknown): number {
+  return typeof v === "number" && isFinite(v) ? v : 0;
+}
+function clamp01(n: number): number {
+  return Math.max(0, Math.min(1, n));
+}

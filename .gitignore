@@ -1,0 +1,23 @@
+node_modules/
+.next/
+out/
+dist/
+build/
+.turbo/
+.pnpm-store/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# tauri
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
