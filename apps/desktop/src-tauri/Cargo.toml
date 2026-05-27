@@ -1,6 +1,6 @@
 [package]
 name = "work-tracker"
-version = "0.0.1"
+version = "0.1.0"
 description = "work-tracker desktop shell"
 authors = ["devgenio"]
 edition = "2021"
