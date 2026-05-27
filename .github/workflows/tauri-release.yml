@@ -10,21 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            args: "--target aarch64-apple-darwin"
-          - platform: macos-latest
-            args: "--target x86_64-apple-darwin"
-          - platform: ubuntu-22.04
-            args: ""
-          - platform: windows-latest
-            args: ""
-
-    runs-on: ${{ matrix.platform }}
+  build-windows:
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -36,24 +23,11 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "./apps/desktop/src-tauri -> target"
-
-      - name: Install Linux deps
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev
 
       - name: Install npm deps
         run: npm install --legacy-peer-deps
@@ -67,9 +41,8 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "work-tracker ${{ github.ref_name }}"
           releaseBody: |
-            Desktop builds of work-tracker. The app wraps the deployed web UI and unlocks native capabilities (gh CLI commits, sysinfo, system tray, autostart).
+            Windows desktop build of work-tracker.
 
-            Pick the installer for your platform below.
+            The app wraps the deployed web UI and unlocks native capabilities (gh CLI commits, sysinfo, system tray, autostart).
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
