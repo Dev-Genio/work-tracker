@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/session";
 import Today from "./today";
 
+// Reads cookies via auth.getSession(); never safe to prerender.
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const user = await requireUser();
   if (!user) redirect("/sign-in");
