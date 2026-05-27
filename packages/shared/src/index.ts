@@ -35,7 +35,14 @@ export interface SystemStats {
 export interface GhCommit {
   repo: string;
   sha: string;
+  /** Subject line (first line of the commit message). */
   message: string;
+  /** Body — everything after the subject. Empty string if none. */
+  body: string;
+  /** Lines added in this commit, 0 if enrichment failed. */
+  additions: number;
+  /** Lines deleted in this commit, 0 if enrichment failed. */
+  deletions: number;
   committedAt: string;
 }
 

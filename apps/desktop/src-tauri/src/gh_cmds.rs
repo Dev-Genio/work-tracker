@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use chrono::Local;
+use futures::stream::{self, StreamExt};
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use tokio::process::Command;
@@ -11,7 +12,12 @@ use tokio::process::Command;
 pub struct GhCommit {
     pub repo: String,
     pub sha: String,
+    /// Subject line (first line of the commit message).
     pub message: String,
+    /// Remaining body, "" if absent.
+    pub body: String,
+    pub additions: u32,
+    pub deletions: u32,
     #[serde(rename = "committedAt")]
     pub committed_at: String,
 }
@@ -21,6 +27,8 @@ pub struct GhTodayResult {
     pub commits: Vec<GhCommit>,
     pub warnings: Vec<String>,
 }
+
+// ----- gh search commits (cheap, paginated) ------------------------------
 
 #[derive(serde::Deserialize)]
 struct RawCommit {
@@ -37,9 +45,6 @@ struct RawCommitInner {
 struct RawCommitter {
     date: String,
 }
-
-/// `gh` returns the repo under different field names depending on which
-/// underlying GitHub API the search hit. Accept all known variants.
 #[derive(serde::Deserialize)]
 struct RawRepo {
     #[serde(default, alias = "fullName", alias = "full_name", alias = "nameWithOwner")]
@@ -54,7 +59,6 @@ struct RawOwner {
     #[serde(default)]
     login: Option<String>,
 }
-
 impl RawRepo {
     fn name_owner(&self) -> Option<String> {
         if let Some(v) = &self.name_with_owner {
@@ -73,14 +77,33 @@ impl RawRepo {
     }
 }
 
-// ----- In-process cache ---------------------------------------------------
-// gh search commits is paginated client-side — `--limit 200` translates to
-// two REST calls — and we hit it twice (author + committer). Running this
-// every batch (~5 minutes) trips GitHub's secondary rate limit. Cache the
-// merged result for TTL so repeated batches reuse it.
+// ----- gh api repos/.../commits/SHA (expensive, per-commit enrichment) ---
+
+#[derive(serde::Deserialize)]
+struct CommitDetail {
+    #[serde(default)]
+    commit: Option<CommitDetailInner>,
+    #[serde(default)]
+    stats: Option<CommitStats>,
+}
+#[derive(serde::Deserialize)]
+struct CommitDetailInner {
+    #[serde(default)]
+    message: Option<String>,
+}
+#[derive(serde::Deserialize)]
+struct CommitStats {
+    #[serde(default)]
+    additions: u32,
+    #[serde(default)]
+    deletions: u32,
+}
+
+// ----- Caching -----------------------------------------------------------
 
 const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const SEARCH_LIMIT: &str = "200";
+const ENRICH_CONCURRENCY: usize = 4;
 
 struct Cached {
     fetched_at: Instant,
@@ -108,10 +131,8 @@ fn cache_put(date: &str, r: &GhTodayResult) {
     }
 }
 
-/// All of the user's commits since `since` (default: today, local timezone),
-/// merged across `--author=@me` and `--committer=@me` so squash-merges still
-/// appear. The two queries are run serially (not in parallel) and the result
-/// is cached for 10 minutes to stay under GitHub's secondary rate limit.
+// ----- Public command ----------------------------------------------------
+
 #[tauri::command]
 pub async fn gh_today_commits(since: Option<String>) -> Result<GhTodayResult, String> {
     let date = since.unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
@@ -126,35 +147,71 @@ pub async fn gh_today_commits(since: Option<String>) -> Result<GhTodayResult, St
     let mut merged: HashMap<(String, String), GhCommit> = HashMap::new();
     let mut warnings: Vec<String> = Vec::new();
 
-    // Serial queries with a short pause between them. Two heavy paginated
-    // searches launched concurrently is the fastest way to hit GitHub's
-    // anti-abuse limiter.
+    // Step 1: gh search commits — twice (author + committer), serially.
     for (label, flag) in [("--author=@me", "--author"), ("--committer=@me", "--committer")] {
         match gh_search(&date, flag).await {
             Ok(rows) => {
                 for c in rows {
                     let Some(repo) = c.repository.name_owner() else { continue };
                     let key = (repo.clone(), c.sha.clone());
-                    merged.entry(key).or_insert_with(|| GhCommit {
-                        repo,
-                        sha: c.sha,
-                        message: c.commit.message.lines().next().unwrap_or("").to_string(),
-                        committed_at: c.commit.committer.date,
+                    let full_msg = c.commit.message;
+                    merged.entry(key).or_insert_with(|| {
+                        let (subject, body) = split_message(&full_msg);
+                        GhCommit {
+                            repo,
+                            sha: c.sha,
+                            message: subject,
+                            body,
+                            additions: 0,
+                            deletions: 0,
+                            committed_at: c.commit.committer.date,
+                        }
                     });
                 }
             }
             Err(e) => warnings.push(format!("gh search commits {} failed: {}", label, e)),
         }
-        // Tiny breather so two near-identical search requests don't burst.
         tokio::time::sleep(Duration::from_millis(750)).await;
+    }
+
+    // Step 2: enrich each commit with stats (additions/deletions) and the
+    // full body (search only returns the subject reliably).
+    let to_enrich: Vec<(String, String)> = merged.keys().cloned().collect();
+
+    let mut enrich_failures = 0usize;
+    let results: Vec<((String, String), Option<(String, u32, u32)>)> = stream::iter(to_enrich)
+        .map(|(repo, sha)| async move {
+            let res = enrich_commit(&repo, &sha).await.ok();
+            ((repo, sha), res)
+        })
+        .buffer_unordered(ENRICH_CONCURRENCY)
+        .collect()
+        .await;
+
+    for ((repo, sha), enriched) in results {
+        if let Some(c) = merged.get_mut(&(repo, sha)) {
+            match enriched {
+                Some((full_msg, add, del)) => {
+                    let (subject, body) = split_message(&full_msg);
+                    c.message = subject;
+                    c.body = body;
+                    c.additions = add;
+                    c.deletions = del;
+                }
+                None => enrich_failures += 1,
+            }
+        }
+    }
+    if enrich_failures > 0 {
+        warnings.push(format!(
+            "{} commit(s) could not be enriched with line stats. Common causes: SAML SSO not authorized for that org, repo deleted, or rate limited.\nFix: gh auth refresh -s read:org,repo",
+            enrich_failures
+        ));
     }
 
     let mut out: Vec<GhCommit> = merged.into_values().collect();
     out.sort_by(|a, b| b.committed_at.cmp(&a.committed_at));
     let result = GhTodayResult { commits: out, warnings };
-
-    // Cache even partial results — we'd rather serve stale-but-useful data
-    // than re-poke a rate-limited endpoint every five minutes.
     cache_put(&date, &result);
     Ok(result)
 }
@@ -191,6 +248,8 @@ pub async fn gh_auth_status() -> Result<String, String> {
     Ok(text)
 }
 
+// ----- Helpers -----------------------------------------------------------
+
 async fn gh_search(date: &str, role_flag: &str) -> Result<Vec<RawCommit>, String> {
     let mut cmd = Command::new("gh");
     cmd.arg("search")
@@ -201,7 +260,6 @@ async fn gh_search(date: &str, role_flag: &str) -> Result<Vec<RawCommit>, String
         .arg("sha,commit,repository")
         .arg("--limit")
         .arg(SEARCH_LIMIT);
-
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
 
@@ -209,12 +267,12 @@ async fn gh_search(date: &str, role_flag: &str) -> Result<Vec<RawCommit>, String
         .output()
         .await
         .map_err(|e| explain_spawn_failure(&e.to_string()))?;
-
     if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).to_string();
-        return Err(explain_gh_failure(out.status.code(), &stderr));
+        return Err(explain_gh_failure(
+            out.status.code(),
+            &String::from_utf8_lossy(&out.stderr),
+        ));
     }
-
     serde_json::from_slice(&out.stdout).map_err(|e| {
         format!(
             "could not parse `gh search commits` JSON output ({}). Stdout (truncated): {}",
@@ -222,6 +280,45 @@ async fn gh_search(date: &str, role_flag: &str) -> Result<Vec<RawCommit>, String
             truncate(&String::from_utf8_lossy(&out.stdout), 300),
         )
     })
+}
+
+/// Returns (full_message, additions, deletions) by calling
+/// `gh api repos/{repo}/commits/{sha}`.
+async fn enrich_commit(repo: &str, sha: &str) -> Result<(String, u32, u32), String> {
+    let mut cmd = Command::new("gh");
+    cmd.arg("api").arg(format!("repos/{}/commits/{}", repo, sha));
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+
+    let out = cmd
+        .output()
+        .await
+        .map_err(|e| explain_spawn_failure(&e.to_string()))?;
+    if !out.status.success() {
+        return Err(explain_gh_failure(
+            out.status.code(),
+            &String::from_utf8_lossy(&out.stderr),
+        ));
+    }
+    let detail: CommitDetail = serde_json::from_slice(&out.stdout)
+        .map_err(|e| format!("parse failed for {}@{}: {}", repo, &sha[..7.min(sha.len())], e))?;
+    let msg = detail
+        .commit
+        .and_then(|c| c.message)
+        .unwrap_or_default();
+    let (add, del) = detail
+        .stats
+        .map(|s| (s.additions, s.deletions))
+        .unwrap_or((0, 0));
+    Ok((msg, add, del))
+}
+
+fn split_message(full: &str) -> (String, String) {
+    let mut lines = full.lines();
+    let subject = lines.next().unwrap_or("").to_string();
+    let rest: Vec<&str> = lines.collect();
+    let body = rest.join("\n").trim().to_string();
+    (subject, body)
 }
 
 fn explain_spawn_failure(raw: &str) -> String {
@@ -232,7 +329,7 @@ fn explain_spawn_failure(raw: &str) -> String {
         || lower.contains("the system cannot find")
         || lower.contains("cannot find the file")
     {
-        msg.push_str("\nFix: install GitHub CLI from https://cli.github.com and make sure `gh` is on your PATH (open a new terminal after installing).");
+        msg.push_str("\nFix: install GitHub CLI from https://cli.github.com and make sure `gh` is on your PATH.");
     }
     msg
 }
@@ -247,27 +344,22 @@ fn explain_gh_failure(code: Option<i32>, stderr: &str) -> String {
     if !trimmed.is_empty() {
         parts.push(format!("Output:\n{}", trimmed));
     }
-
     let hint = if lower.contains("not logged into")
         || lower.contains("authentication")
         || lower.contains("authenticate")
         || lower.contains("you are not logged in")
     {
-        Some("You are not signed in to `gh`. Run `gh auth login` and choose GitHub.com → HTTPS, then sign in.")
-    } else if lower.contains("sso")
-        || lower.contains("saml")
-        || lower.contains("you must authorize")
-        || lower.contains("resource protected by")
-    {
-        Some("Your gh token is missing SAML/SSO authorization for one or more orgs. Run:\n  gh auth refresh -s read:org,repo\nThen click through the SSO prompt for each org in your browser.")
+        Some("You are not signed in to `gh`. Run `gh auth login`.")
+    } else if lower.contains("sso") || lower.contains("saml") || lower.contains("you must authorize") {
+        Some("Your gh token is missing SAML/SSO authorization for one or more orgs. Run:\n  gh auth refresh -s read:org,repo\nThen click through the SSO prompt for each org.")
     } else if lower.contains("scope") || lower.contains("requires") || lower.contains("forbidden") {
         Some("Your gh token is missing required scopes. Run:\n  gh auth refresh -s read:org,repo")
     } else if lower.contains("secondary rate limit") {
-        Some("GitHub's anti-abuse limiter is throttling rapid search calls. The app caches gh results for 10 minutes — subsequent batches will reuse the cache instead of re-querying. If this persists, lower your tracking cadence in Settings.")
+        Some("GitHub's anti-abuse limiter is throttling rapid calls. Results are cached 10 min — subsequent batches reuse the cache. If this persists, lower your tracking cadence in Settings.")
     } else if lower.contains("rate limit") || lower.contains("rate-limit") || lower.contains("403") {
-        Some("GitHub rate-limited the request. Wait a few minutes; the app caches gh results for 10 minutes so subsequent batches will reuse them.")
+        Some("GitHub rate-limited the request. Wait a few minutes; results are cached for 10 min.")
     } else if lower.contains("could not resolve host") || lower.contains("network") || lower.contains("timeout") {
-        Some("Network problem reaching api.github.com. Check your internet connection / proxy / VPN.")
+        Some("Network problem reaching api.github.com. Check your internet / VPN.")
     } else {
         None
     };

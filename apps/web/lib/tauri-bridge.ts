@@ -60,7 +60,6 @@ export async function ghTodayDetailed(since?: string): Promise<GhTodayResult> {
   try {
     return await invoke<GhTodayResult>("gh_today_commits", { since });
   } catch (e) {
-    // Invoke-level failure (e.g. spawn-failed) — surface as a warning.
     return { commits: [], warnings: [String(e)] };
   }
 }
@@ -70,6 +69,8 @@ export async function ghTodayCommits(since?: string): Promise<GhCommit[]> {
   const r = await ghTodayDetailed(since);
   return r.commits;
 }
+// Keep GhCommit re-exported for callers that import from the bridge.
+export type { GhCommit, GhTodayResult } from "@work-tracker/shared";
 
 /** Output of `gh auth status` for diagnostics in Settings. */
 export async function ghAuthStatus(): Promise<string> {

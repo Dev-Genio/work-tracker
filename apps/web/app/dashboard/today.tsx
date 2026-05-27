@@ -48,6 +48,9 @@ interface Commit {
   repo: string;
   sha: string;
   message: string;
+  body: string | null;
+  additions: number;
+  deletions: number;
   committedAt: string;
 }
 
@@ -98,9 +101,9 @@ export default function Today() {
 
   // Fetch per-day totals — always wide enough to fill the heatmap.
   const loadHeatmap = useCallback(async () => {
-    // Heatmap shows at least the last 90 days regardless of selected range,
-    // so it stays useful even on a single-day view.
-    const days = Math.max(90, daysBetween(from, to));
+    // Heatmap shows at least the last ~6 months so the grid is wide and
+    // short (GitHub contributions style) instead of tall and tiny.
+    const days = Math.max(183, daysBetween(from, to));
     const start = new Date();
     start.setDate(start.getDate() - days + 1);
     const hmFromIso = startOfDay(start).toISOString();
@@ -396,15 +399,33 @@ export default function Today() {
       {commits && commits.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Commits</CardTitle>
+            <CardTitle className="text-sm font-medium flex items-center justify-between">
+              <span>Commits</span>
+              <span className="font-normal text-xs text-muted-foreground tabular-nums">
+                {commits.length} commit{commits.length === 1 ? "" : "s"} ·{" "}
+                <span className="text-green-500">+{sum(commits, "additions")}</span> /{" "}
+                <span className="text-red-500">-{sum(commits, "deletions")}</span>
+              </span>
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2 text-sm">
+            <ul className="space-y-1 text-sm">
               {commits.map((c) => (
-                <li key={`${c.repo}:${c.sha}`} className="flex gap-2">
-                  <code className="text-muted-foreground tabular-nums">{c.sha.slice(0, 7)}</code>
-                  <span className="font-medium shrink-0">{c.repo}</span>
-                  <span className="text-muted-foreground truncate">— {c.message}</span>
+                <li key={`${c.repo}:${c.sha}`}>
+                  {c.body ? (
+                    <details className="group">
+                      <summary className="list-none cursor-pointer flex items-center gap-2 hover:bg-accent/40 rounded-sm px-1 py-0.5 -mx-1">
+                        <CommitRow commit={c} />
+                      </summary>
+                      <div className="ml-[88px] mt-1 mb-2 p-2 rounded-md border bg-muted/30 text-xs text-muted-foreground whitespace-pre-wrap font-mono">
+                        {c.body}
+                      </div>
+                    </details>
+                  ) : (
+                    <div className="px-1 py-0.5 -mx-1">
+                      <CommitRow commit={c} />
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
@@ -413,6 +434,26 @@ export default function Today() {
       )}
     </div>
   );
+}
+
+function CommitRow({ commit }: { commit: Commit }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0 w-full">
+      <code className="text-muted-foreground tabular-nums shrink-0 text-xs">{commit.sha.slice(0, 7)}</code>
+      <span className="font-medium shrink-0 text-xs">{commit.repo}</span>
+      <span className="text-foreground/90 truncate">— {commit.message}</span>
+      <span className="ml-auto shrink-0 text-xs tabular-nums text-muted-foreground">
+        <span className="text-green-500">+{commit.additions}</span>{" "}
+        <span className="text-red-500">-{commit.deletions}</span>
+      </span>
+    </div>
+  );
+}
+
+function sum(commits: Commit[], key: "additions" | "deletions"): number {
+  let s = 0;
+  for (const c of commits) s += c[key] ?? 0;
+  return s;
 }
 
 function RangeChip({

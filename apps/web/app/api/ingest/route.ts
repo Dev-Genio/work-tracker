@@ -14,6 +14,9 @@ interface IngestBody {
     repo: string;
     sha: string;
     message: string;
+    body?: string;
+    additions?: number;
+    deletions?: number;
     committedAt: string;
   }[];
   model: string;
@@ -88,6 +91,9 @@ export async function POST(req: Request) {
           repo: c.repo,
           sha: c.sha,
           message: c.message,
+          body: c.body ?? null,
+          additions: typeof c.additions === "number" ? c.additions : 0,
+          deletions: typeof c.deletions === "number" ? c.deletions : 0,
           committedAt: new Date(c.committedAt),
           batchId: batch.id,
         })),

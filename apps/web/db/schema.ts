@@ -112,7 +112,12 @@ export const commitsSeen = pgTable(
     userId: text("user_id").notNull(),
     repo: text("repo").notNull(),
     sha: text("sha").notNull(),
+    /** First line of the commit message (subject). */
     message: text("message").notNull(),
+    /** Remaining lines of the commit message, if any. */
+    body: text("body"),
+    additions: integer("additions").notNull().default(0),
+    deletions: integer("deletions").notNull().default(0),
     committedAt: timestamp("committed_at", { withTimezone: true }).notNull(),
     batchId: uuid("batch_id").references(() => captureBatches.id, {
       onDelete: "set null",
