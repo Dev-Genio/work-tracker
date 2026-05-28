@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Send, Sparkles, User, Wrench } from "lucide-react";
+import { Check, ChevronDown, Copy, Send, Sparkles, User, Wrench } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -163,8 +163,9 @@ export default function Chat() {
                   {t.pending && !t.answer && <Thinking />}
 
                   {t.answer && (
-                    <div className="rounded-2xl rounded-tl-md bg-card border px-4 py-3">
+                    <div className="group/answer relative rounded-2xl rounded-tl-md bg-card border px-4 py-3">
                       <Markdown>{t.answer}</Markdown>
+                      <CopyButton text={t.answer} />
                     </div>
                   )}
                   {t.error && (
@@ -198,6 +199,28 @@ export default function Chat() {
         </form>
       </div>
     </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label="Copy markdown"
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          toast.error("Couldn't copy to clipboard");
+        }
+      }}
+      className="absolute top-2 right-2 h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent opacity-0 group-hover/answer:opacity-100 focus:opacity-100 transition-opacity"
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
   );
 }
 
