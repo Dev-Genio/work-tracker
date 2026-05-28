@@ -83,6 +83,7 @@ export default function Chat() {
         history,
         userMessage: msg,
         primer,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         maxSteps: 8,
         onStep: (step) => {
           setTurns((t) =>

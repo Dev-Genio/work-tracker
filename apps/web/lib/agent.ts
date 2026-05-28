@@ -31,7 +31,31 @@ const STRIP_KEYS = new Set([
   "jpegBase64",
 ]);
 
+// Matches ISO-8601 datetimes like 2026-05-27T16:11:00.000Z or with offset.
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/;
+
+let LOCAL_TZ = "UTC";
+
+function localizeIso(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  // Format in the user's tz so the model never does timezone math itself.
+  const s = d.toLocaleString("en-US", {
+    timeZone: LOCAL_TZ,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+  return `${s} (${LOCAL_TZ})`;
+}
+
 function sanitize(v: unknown): unknown {
+  if (typeof v === "string") {
+    return ISO_RE.test(v) ? localizeIso(v) : v;
+  }
   if (Array.isArray(v)) return v.map(sanitize);
   if (v && typeof v === "object") {
     const out: Record<string, unknown> = {};
@@ -85,7 +109,7 @@ const TOOLS: ToolDef[] = [
   },
 ];
 
-function systemPrompt(primer: string | undefined): string {
+function systemPrompt(primer: string | undefined, tz: string): string {
   const tools = TOOLS.map(
     (t) => `- ${t.name}: ${t.description}\n  args: ${t.argsHint}`,
   ).join("\n");
@@ -94,7 +118,26 @@ function systemPrompt(primer: string | undefined): string {
     ? `\n--- TODAY'S ACTIVITY (already known, no tool call needed for these) ---\n${primer}\n--- END TODAY ---\n`
     : "";
 
-  return `You are a work-history assistant. Today's date is ${new Date().toLocaleDateString()}.
+  // Provide the user's local "now" with offset so the model can compute
+  // correct day boundaries without doing timezone math in its head.
+  const now = new Date();
+  const localNow = now.toLocaleString("en-US", {
+    timeZone: tz,
+    dateStyle: "full",
+    timeStyle: "short",
+  });
+  const offsetMin = -now.getTimezoneOffset(); // browser is in user's tz
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offsetMin);
+  const offset = `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
+
+  return `You are a work-history assistant.
+
+TIMEZONE:
+- The user's timezone is ${tz} (UTC${offset}).
+- Right now it is: ${localNow}.
+- All timestamps in tool results are ALREADY converted to ${tz} local time — read and report them as-is. Do NOT shift them.
+- When you pass "from"/"to" to a tool, use the user's LOCAL day boundaries written with their offset, e.g. "2026-05-27T00:00:00${offset}" for the start of that local day. Never use Z/UTC boundaries — that would miss early-morning or late-night sessions.
 ${primerBlock}
 You have access to these tools to retrieve data BEYOND what's in today's primer:
 
@@ -104,13 +147,16 @@ On EVERY turn, return ONLY a single JSON object — no prose, no markdown fences
 { "thought": string, "tool": "<name>", "args": { ... } }   // to call a tool
 { "final": string }                                        // to end the conversation
 
+Notes on data shape:
+- A "session" is a short captured batch (~1 min). Totals are best answered with aggregate_time, NOT by counting search_logs rows (search is capped and returns only a sample of the newest matches).
+- For "how long / how many hours" questions, prefer aggregate_time.
+- search_logs returns at most a sample; never claim it's the complete set.
+
 Strict rules for the FINAL answer:
-- Write in plain natural language. No JSON, no markdown fences.
-- NEVER mention internal IDs, UUIDs, or "session" / "batch" identifiers. Reference work by project, app, time of day, or commit message instead.
-- Prefer concrete times ("2:15 PM"), date ranges ("Monday morning", "this week"), and project names.
+- Write in clear natural language. Markdown is allowed and encouraged (headings, bullet lists, bold) — it will be rendered.
+- NEVER mention internal IDs, UUIDs, or "batch" identifiers. Reference work by project, app, time of day (in ${tz}), or commit message.
+- Use concrete local times ("2:15 PM"), date ranges, and project names.
 - If today's primer already answers the question, answer directly with NO tool call.
-- Only call tools when the question is about other days, broader time ranges, or details not in the primer.
-- Chain tool calls only when truly needed. Stop and answer as soon as you have enough.
 - If no relevant data exists, say so plainly.`;
 }
 
@@ -135,6 +181,8 @@ export interface AgentRunOptions {
   userMessage: string;
   /** Pre-fetched digest of today's activity, inlined into the system prompt. */
   primer?: string;
+  /** IANA timezone (e.g. "Asia/Kolkata"). Used to localize all times. */
+  timezone?: string;
   maxSteps?: number;
   onStep?: (step: TraceStep) => void;
 }
@@ -148,8 +196,16 @@ export async function runAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
   const max = opts.maxSteps ?? 6;
   const trace: TraceStep[] = [];
 
+  // Set the module-level tz used by sanitize()/localizeIso() for this run.
+  LOCAL_TZ =
+    opts.timezone ||
+    (typeof Intl !== "undefined"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : "UTC") ||
+    "UTC";
+
   const messages: Message[] = [
-    { role: "system", content: systemPrompt(opts.primer) },
+    { role: "system", content: systemPrompt(opts.primer, LOCAL_TZ) },
     ...opts.history.map((m) => ({ role: m.role, content: m.content })),
     { role: "user", content: opts.userMessage },
   ];
