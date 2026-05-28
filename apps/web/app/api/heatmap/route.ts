@@ -42,7 +42,10 @@ export async function GET(req: Request) {
           lte(schema.captureBatches.startedAt, to),
         ),
       )
-      .groupBy(sql`to_char(${schema.captureBatches.startedAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`),
+      // Group by the first select column (the day expression). Referencing
+      // the expression directly would re-bind ${tz} as a separate param, which
+      // Postgres treats as a different expression.
+      .groupBy(sql`1`),
     db
       .select({
         day: sql<string>`to_char(${schema.commitsSeen.committedAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`,
@@ -56,7 +59,7 @@ export async function GET(req: Request) {
           lte(schema.commitsSeen.committedAt, to),
         ),
       )
-      .groupBy(sql`to_char(${schema.commitsSeen.committedAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`),
+      .groupBy(sql`1`),
   ]);
 
   const byDay = new Map<string, { seconds: number; commits: number }>();
