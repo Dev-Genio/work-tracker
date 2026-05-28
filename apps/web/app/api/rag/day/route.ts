@@ -25,6 +25,8 @@ export async function GET(req: Request) {
       app: schema.vlmSummaries.app,
       projectGuess: schema.vlmSummaries.projectGuess,
       focusScore: schema.vlmSummaries.focusScore,
+      system: schema.captureBatches.system,
+      processes: schema.captureBatches.processes,
     })
     .from(schema.vlmSummaries)
     .innerJoin(
@@ -108,10 +110,58 @@ export async function GET(req: Request) {
     }
   }
 
+  // System resource usage (Tauri desktop only — browser batches have none).
+  interface SysStat { cpuPercent?: number; memUsedMb?: number; memTotalMb?: number }
+  interface Proc { name?: string; cpu?: number; memMb?: number }
+  let cpuSum = 0, cpuPeak = 0, cpuN = 0;
+  let memUsedSum = 0, memUsedPeak = 0, memN = 0, memTotal = 0;
+  const procAgg = new Map<string, { seen: number; cpuSum: number; memPeak: number }>();
+  for (const r of rows) {
+    const sys = r.system as SysStat | null;
+    if (sys && typeof sys.cpuPercent === "number") {
+      cpuSum += sys.cpuPercent; cpuPeak = Math.max(cpuPeak, sys.cpuPercent); cpuN++;
+    }
+    if (sys && typeof sys.memUsedMb === "number") {
+      memUsedSum += sys.memUsedMb; memUsedPeak = Math.max(memUsedPeak, sys.memUsedMb); memN++;
+      if (typeof sys.memTotalMb === "number") memTotal = Math.max(memTotal, sys.memTotalMb);
+    }
+    const procs = (r.processes as Proc[] | null) ?? [];
+    for (const p of procs) {
+      if (!p.name) continue;
+      const e = procAgg.get(p.name) ?? { seen: 0, cpuSum: 0, memPeak: 0 };
+      e.seen += 1;
+      e.cpuSum += typeof p.cpu === "number" ? p.cpu : 0;
+      e.memPeak = Math.max(e.memPeak, typeof p.memMb === "number" ? p.memMb : 0);
+      procAgg.set(p.name, e);
+    }
+  }
+  const systemUsage =
+    cpuN > 0 || memN > 0
+      ? {
+          cpuAvgPercent: cpuN > 0 ? Math.round((cpuSum / cpuN) * 10) / 10 : null,
+          cpuPeakPercent: cpuN > 0 ? Math.round(cpuPeak * 10) / 10 : null,
+          memAvgMb: memN > 0 ? Math.round(memUsedSum / memN) : null,
+          memPeakMb: memN > 0 ? memUsedPeak : null,
+          memTotalMb: memTotal || null,
+          samples: cpuN,
+        }
+      : null;
+  const topProcesses = [...procAgg.entries()]
+    .sort((a, b) => b[1].seen - a[1].seen)
+    .slice(0, 12)
+    .map(([name, v]) => ({
+      name,
+      seen: v.seen,
+      cpuAvgPercent: v.seen > 0 ? Math.round((v.cpuSum / v.seen) * 10) / 10 : 0,
+      memPeakMb: v.memPeak,
+    }));
+
   return NextResponse.json({
     totalSeconds: Math.round(totalSeconds),
     focusAvg: rows.length > 0 ? focusSum / rows.length : 0,
     sessions: rows.length,
+    systemUsage,
+    topProcesses,
     byProject: [...byProject.entries()]
       .sort((a, b) => b[1] - a[1])
       .map(([key, seconds]) => ({ key, seconds: Math.round(seconds) })),

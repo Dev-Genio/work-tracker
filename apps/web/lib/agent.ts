@@ -73,7 +73,7 @@ const TOOLS: ToolDef[] = [
   {
     name: "day_digest",
     description:
-      "THE PRIMARY TOOL for 'what did I do on <day/range>'. Returns the COMPLETE day condensed in one call: total time, focus, project & app breakdowns, merged activity time-blocks (not raw 1-min sessions), and commits. Use this instead of paging search_logs. Works for a single day or a small range.",
+      "THE PRIMARY TOOL for 'what did I do on <day/range>' AND for system resource questions. Returns the COMPLETE day condensed in one call: total time, focus, project & app breakdowns, merged activity time-blocks, commits, plus systemUsage (avg/peak CPU %, avg/peak memory MB, total memory) and topProcesses (most-seen process names with avg CPU and peak memory). systemUsage/topProcesses come from the desktop tracker and are null/empty for days tracked only in the browser. Use this instead of paging search_logs.",
     argsHint:
       '{ "from": ISO datetime (local day start, e.g. 2026-05-27T00:00:00+05:30), "to": ISO datetime (local day end) }',
     execute: async (args) => {
@@ -165,6 +165,7 @@ Notes on data shape & tool choice:
 - A "session" is a short captured batch (~1 min). A busy day has 100-300 of them, so NEVER try to reconstruct a day by paging search_logs — it's capped and returns only the newest matches, and you will loop without ever seeing the morning.
 - For "what did I do on <day>" → use day_digest. It returns the whole day already condensed into time-blocks + breakdowns + commits in ONE call.
 - For "how long / how many hours" → use aggregate_time (or read totalSeconds from day_digest).
+- For CPU / memory / RAM / "which processes were running / using resources" → use day_digest and read systemUsage + topProcesses. This data IS available (captured by the desktop tracker). Only say it's unavailable if systemUsage is null/empty for the asked range (e.g. browser-only tracking).
 - Use search_logs ONLY for keyword lookups ("find sessions about X"); treat its output as a sample, never the complete set.
 
 Strict rules for the FINAL answer:
