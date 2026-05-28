@@ -46,12 +46,24 @@ export interface ChatMessage {
   content: ChatContent;
 }
 
+export interface JsonSchema {
+  name: string;
+  schema: Record<string, unknown>;
+  strict?: boolean;
+}
+
 export interface ChatOptions {
   target?: LlmTarget;
   model: string;
   messages: ChatMessage[];
   temperature?: number;
-  jsonObject?: boolean; // request response_format json_object
+  /** Request JSON output. On OpenRouter we use response_format json_object;
+   *  on LM Studio (which rejects json_object) we use json_schema when a
+   *  schema is supplied. */
+  jsonObject?: boolean;
+  /** JSON schema for structured output — used by LM Studio (and any provider
+   *  that prefers schema-constrained output). */
+  jsonSchema?: JsonSchema;
 }
 
 /** OpenAI-compatible chat completion. Works for both OpenRouter and LM Studio
@@ -63,11 +75,20 @@ export async function chatCompletion(opts: ChatOptions): Promise<string> {
     messages: opts.messages,
     temperature: opts.temperature ?? 0.2,
   };
-  // OpenRouter supports response_format: json_object. LM Studio's endpoint
-  // only accepts 'json_schema' or 'text', so we omit it there and rely on the
-  // prompt + our lenient JSON extraction instead.
-  if (opts.jsonObject && target.provider === "openrouter") {
-    body.response_format = { type: "json_object" };
+  // OpenRouter supports response_format: json_object (broad model support).
+  // LM Studio rejects json_object but supports json_schema, so we send the
+  // schema there to get structured output (needed for VLM tracking).
+  if (target.provider === "openrouter") {
+    if (opts.jsonObject) body.response_format = { type: "json_object" };
+  } else if (opts.jsonSchema) {
+    body.response_format = {
+      type: "json_schema",
+      json_schema: {
+        name: opts.jsonSchema.name,
+        strict: opts.jsonSchema.strict ?? false,
+        schema: opts.jsonSchema.schema,
+      },
+    };
   }
 
   const res = await fetch(`${target.baseUrl}/chat/completions`, {

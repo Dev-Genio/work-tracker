@@ -52,6 +52,22 @@ export async function callVlm(opts: VlmCallOptions): Promise<VlmResult> {
     target: resolveTarget(),
     model: opts.model,
     jsonObject: true,
+    jsonSchema: {
+      name: "work_summary",
+      strict: true,
+      schema: {
+        type: "object",
+        properties: {
+          activity: { type: "string" },
+          app: { type: ["string", "null"] },
+          projectGuess: { type: ["string", "null"] },
+          tasks: { type: "array", items: { type: "string" } },
+          focusScore: { type: "number" },
+        },
+        required: ["activity", "app", "projectGuess", "tasks", "focusScore"],
+        additionalProperties: false,
+      },
+    },
     temperature: 0.2,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },

@@ -291,7 +291,28 @@ async function callModel(
   // Provider/endpoint resolved from device settings (OpenRouter or LM Studio).
   // apiKey is unused here but kept for the existing call signature.
   void apiKey;
-  return chatCompletion({ model, messages, jsonObject: true, temperature: 0.2 });
+  return chatCompletion({
+    model,
+    messages,
+    jsonObject: true,
+    // For LM Studio: schema-constrain the control object. Loose (strict:false)
+    // because it's a union — either a tool call {thought,tool,args} or {final}.
+    jsonSchema: {
+      name: "agent_step",
+      strict: false,
+      schema: {
+        type: "object",
+        properties: {
+          thought: { type: "string" },
+          tool: { type: "string" },
+          args: { type: "object", additionalProperties: true },
+          final: { type: "string" },
+        },
+        additionalProperties: true,
+      },
+    },
+    temperature: 0.2,
+  });
 }
 
 function extractJson(text: string): Record<string, unknown> | null {
