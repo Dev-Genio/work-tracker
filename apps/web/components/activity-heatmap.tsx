@@ -21,76 +21,98 @@ const DAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""];
 export function ActivityHeatmap({ days, fromIso, toIso }: Props) {
   const grid = useMemo(() => buildGrid(days, fromIso, toIso), [days, fromIso, toIso]);
 
+  const CELL = 12;
+  const GAP = 3;
+
   return (
     <div className="w-full">
-      <div className="overflow-x-auto pb-1">
-        {/* Month labels */}
-        <div className="ml-8 flex gap-[3px] mb-1 text-[10px] text-muted-foreground select-none">
-          {grid.monthSpans.map((span, i) => (
+      <div className="overflow-x-auto pb-1 [scrollbar-width:thin]">
+        {/* min-w-max keeps the month row + cells aligned and lets the whole
+            block scroll as one unit on narrow screens. */}
+        <div className="min-w-max">
+          {/* Month labels — same grid geometry as the cells below, so each
+              label spans exactly the weeks of its month. */}
+          <div className="flex gap-2 mb-1">
+            <div className="w-7 shrink-0" />
             <div
-              key={i}
-              className="leading-[12px]"
-              style={{ width: `${span.weeks * 15 - 3}px`, textAlign: "left" }}
+              className="grid"
+              style={{
+                gridAutoColumns: `${CELL}px`,
+                gridAutoFlow: "column",
+                columnGap: `${GAP}px`,
+              }}
             >
-              {span.label}
+              {grid.monthSpans.map((span, i) => (
+                <div
+                  key={i}
+                  className="text-[10px] text-muted-foreground leading-3 whitespace-nowrap select-none"
+                  style={{ gridColumn: `span ${span.weeks}` }}
+                >
+                  {span.label}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-
-        <div className="flex gap-2">
-          {/* Weekday labels */}
-          <div className="grid grid-rows-7 gap-[3px] text-[10px] text-muted-foreground select-none shrink-0">
-            {DAY_LABELS.map((d, i) => (
-              <div key={i} className="h-3 leading-3 w-6">{d}</div>
-            ))}
           </div>
 
-          {/* Fixed-size cells, columns laid out left-to-right. */}
-          <div
-            className="grid grid-flow-col gap-[3px]"
-            style={{
-              gridTemplateRows: "repeat(7, 12px)",
-              gridAutoColumns: "12px",
-              gridAutoFlow: "column",
-            }}
-          >
-            {grid.weeks.flatMap((week, wi) =>
-              week.map((cell, di) =>
-                cell ? (
-                  <Tooltip key={`${wi}-${di}`}>
-                    <TooltipTrigger asChild>
-                      <div
-                        className={cn(
-                          "h-3 w-3 rounded-[2px] transition-colors",
-                          intensityClass(cell.seconds, grid.max),
-                        )}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      <div className="text-xs">
-                        <div className="font-medium">{cell.date}</div>
-                        <div className="text-muted-foreground">
-                          {formatHm(cell.seconds)} · {cell.commits} commit
-                          {cell.commits === 1 ? "" : "s"}
+          <div className="flex gap-2">
+            {/* Weekday labels */}
+            <div
+              className="grid text-[10px] text-muted-foreground select-none shrink-0 w-7"
+              style={{ gridTemplateRows: `repeat(7, ${CELL}px)`, rowGap: `${GAP}px` }}
+            >
+              {DAY_LABELS.map((d, i) => (
+                <div key={i} className="leading-3">{d}</div>
+              ))}
+            </div>
+
+            {/* Cells */}
+            <div
+              className="grid"
+              style={{
+                gridTemplateRows: `repeat(7, ${CELL}px)`,
+                gridAutoColumns: `${CELL}px`,
+                gridAutoFlow: "column",
+                gap: `${GAP}px`,
+              }}
+            >
+              {grid.weeks.flatMap((week, wi) =>
+                week.map((cell, di) =>
+                  cell ? (
+                    <Tooltip key={`${wi}-${di}`}>
+                      <TooltipTrigger asChild>
+                        <div
+                          className={cn(
+                            "rounded-[2px] transition-colors",
+                            intensityClass(cell.seconds, grid.max),
+                          )}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        <div className="text-xs">
+                          <div className="font-medium">{cell.date}</div>
+                          <div className="text-muted-foreground">
+                            {formatHm(cell.seconds)} · {cell.commits} commit
+                            {cell.commits === 1 ? "" : "s"}
+                          </div>
                         </div>
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                ) : (
-                  <div key={`${wi}-${di}`} className="h-3 w-3" />
+                      </TooltipContent>
+                    </Tooltip>
+                  ) : (
+                    <div key={`${wi}-${di}`} />
+                  ),
                 ),
-              ),
-            )}
+              )}
+            </div>
           </div>
         </div>
+      </div>
 
-        <div className="flex justify-end items-center gap-1.5 mt-3 text-[10px] text-muted-foreground">
-          <span>Less</span>
-          {[0, 1, 2, 3, 4].map((lvl) => (
-            <div key={lvl} className={cn("h-2.5 w-2.5 rounded-[2px]", scaleClass(lvl))} />
-          ))}
-          <span>More</span>
-        </div>
+      <div className="flex justify-end items-center gap-1.5 mt-3 text-[10px] text-muted-foreground">
+        <span>Less</span>
+        {[0, 1, 2, 3, 4].map((lvl) => (
+          <div key={lvl} className={cn("h-2.5 w-2.5 rounded-[2px]", scaleClass(lvl))} />
+        ))}
+        <span>More</span>
       </div>
     </div>
   );
@@ -149,10 +171,6 @@ function buildGrid(
     const prev = monthSpans[monthSpans.length - 1];
     if (prev && prev.label === m) prev.weeks++;
     else monthSpans.push({ label: m, weeks: 1 });
-  }
-  // Suppress the label on very short spans to avoid overlap.
-  for (const span of monthSpans) {
-    if (span.weeks < 2) span.label = "";
   }
 
   return { weeks, max, monthSpans };
