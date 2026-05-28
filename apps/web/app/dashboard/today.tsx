@@ -85,8 +85,8 @@ export default function Today() {
   const toIso = useMemo(() => new Date(to + "T23:59:59").toISOString(), [to]);
 
   // Fetch paginated summaries + total count + commits
-  const loadList = useCallback(async () => {
-    setSummaries(null);
+  const loadList = useCallback(async (silent = false) => {
+    if (!silent) setSummaries(null);
     const params = new URLSearchParams({
       from: fromIso,
       to: toIso,
@@ -137,6 +137,28 @@ export default function Today() {
   useEffect(() => {
     void loadHeatmap();
   }, [loadHeatmap]);
+
+  // Keep the dashboard fresh while batches are being ingested elsewhere
+  // (e.g. the desktop tracker running while this is open). Refresh on a
+  // 30s poll and whenever the tab/window regains focus.
+  useEffect(() => {
+    const refresh = () => {
+      void loadList(true);
+      void loadHeatmap();
+    };
+    const interval = setInterval(refresh, 30_000);
+    const onFocus = () => refresh();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [loadList, loadHeatmap]);
 
   function pickPreset(p: Preset) {
     setPreset(p);
