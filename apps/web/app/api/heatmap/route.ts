@@ -17,10 +17,17 @@ export async function GET(req: Request) {
   const { from, to } = parseRange(url.searchParams);
   const userId = user.id;
 
+  // Bucket days in the user's timezone (passed by the client). Without this we
+  // group by the server's tz (UTC on Vercel), so near local midnight a session
+  // lands on the "wrong" day cell and the heatmap looks stale. Falls back to
+  // UTC if not supplied. Validated to a conservative IANA-ish charset.
+  const tzRaw = url.searchParams.get("tz") ?? "UTC";
+  const tz = /^[A-Za-z0-9_+\-/]{1,64}$/.test(tzRaw) ? tzRaw : "UTC";
+
   const [trackRows, commitRows] = await Promise.all([
     db
       .select({
-        day: sql<string>`to_char(${schema.captureBatches.startedAt}, 'YYYY-MM-DD')`,
+        day: sql<string>`to_char(${schema.captureBatches.startedAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`,
         seconds: sql<number>`coalesce(extract(epoch from sum(${schema.captureBatches.endedAt} - ${schema.captureBatches.startedAt})), 0)`,
       })
       .from(schema.vlmSummaries)
@@ -35,10 +42,10 @@ export async function GET(req: Request) {
           lte(schema.captureBatches.startedAt, to),
         ),
       )
-      .groupBy(sql`to_char(${schema.captureBatches.startedAt}, 'YYYY-MM-DD')`),
+      .groupBy(sql`to_char(${schema.captureBatches.startedAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`),
     db
       .select({
-        day: sql<string>`to_char(${schema.commitsSeen.committedAt}, 'YYYY-MM-DD')`,
+        day: sql<string>`to_char(${schema.commitsSeen.committedAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`,
         commits: sql<number>`count(*)::int`,
       })
       .from(schema.commitsSeen)
@@ -49,7 +56,7 @@ export async function GET(req: Request) {
           lte(schema.commitsSeen.committedAt, to),
         ),
       )
-      .groupBy(sql`to_char(${schema.commitsSeen.committedAt}, 'YYYY-MM-DD')`),
+      .groupBy(sql`to_char(${schema.commitsSeen.committedAt} AT TIME ZONE ${tz}, 'YYYY-MM-DD')`),
   ]);
 
   const byDay = new Map<string, { seconds: number; commits: number }>();

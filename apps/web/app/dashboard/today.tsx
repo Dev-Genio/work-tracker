@@ -111,7 +111,11 @@ export default function Today() {
     start.setDate(start.getDate() - days + 1);
     const hmFromIso = startOfDay(start).toISOString();
     const hmToIso = new Date().toISOString();
-    const res = await dataGet<{ days: HeatmapDay[] }>("heatmap", { from: hmFromIso, to: hmToIso });
+    const res = await dataGet<{ days: HeatmapDay[] }>("heatmap", {
+      from: hmFromIso,
+      to: hmToIso,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
     setHeatmapDays(res.days ?? []);
     setHeatmapRange({ fromIso: hmFromIso, toIso: hmToIso });
   }, [from, to]);
