@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 export interface HeatmapDay {
   date: string;
   seconds: number;
-  sessions: number;
+  commits: number;
 }
 
 interface Props {
@@ -70,8 +70,8 @@ export function ActivityHeatmap({ days, fromIso, toIso }: Props) {
                       <div className="text-xs">
                         <div className="font-medium">{cell.date}</div>
                         <div className="text-muted-foreground">
-                          {formatHm(cell.seconds)} · {cell.sessions} session
-                          {cell.sessions === 1 ? "" : "s"}
+                          {formatHm(cell.seconds)} · {cell.commits} commit
+                          {cell.commits === 1 ? "" : "s"}
                         </div>
                       </div>
                     </TooltipContent>
@@ -134,7 +134,7 @@ function buildGrid(
       if (beforeRange || afterRange) {
         week.push(null);
       } else {
-        const cell = byDate.get(iso) ?? { date: iso, seconds: 0, sessions: 0 };
+        const cell = byDate.get(iso) ?? { date: iso, seconds: 0, commits: 0 };
         if (cell.seconds > max) max = cell.seconds;
         week.push(cell);
       }

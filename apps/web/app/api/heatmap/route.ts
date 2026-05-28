@@ -5,9 +5,9 @@ import { db, schema } from "@/db";
 import { parseRange } from "@/lib/time";
 
 /**
- * Per-day activity totals (in seconds + session counts) over a range.
- * Used to draw the GitHub-style contribution heatmap and a daily-totals
- * line chart on the dashboard.
+ * Per-day activity totals over a range: tracked seconds (from capture
+ * batches) and commit counts (from commits_seen). Drives the contribution
+ * heatmap + daily-totals chart on the dashboard.
  */
 export async function GET(req: Request) {
   const user = await requireUser();
@@ -17,34 +17,61 @@ export async function GET(req: Request) {
   const { from, to } = parseRange(url.searchParams);
   const userId = user.id;
 
-  // Aggregate at the user's local-day granularity. We use the server's TZ
-  // here for simplicity; for a more polished UX we'd pass a tz param.
-  const rows = await db
-    .select({
-      day: sql<string>`to_char(${schema.captureBatches.startedAt}, 'YYYY-MM-DD')`,
-      seconds: sql<number>`coalesce(extract(epoch from sum(${schema.captureBatches.endedAt} - ${schema.captureBatches.startedAt})), 0)`,
-      sessions: sql<number>`count(*)::int`,
-    })
-    .from(schema.vlmSummaries)
-    .innerJoin(
-      schema.captureBatches,
-      eq(schema.vlmSummaries.batchId, schema.captureBatches.id),
-    )
-    .where(
-      and(
-        eq(schema.vlmSummaries.userId, userId),
-        gte(schema.captureBatches.startedAt, from),
-        lte(schema.captureBatches.startedAt, to),
-      ),
-    )
-    .groupBy(sql`to_char(${schema.captureBatches.startedAt}, 'YYYY-MM-DD')`);
+  const [trackRows, commitRows] = await Promise.all([
+    db
+      .select({
+        day: sql<string>`to_char(${schema.captureBatches.startedAt}, 'YYYY-MM-DD')`,
+        seconds: sql<number>`coalesce(extract(epoch from sum(${schema.captureBatches.endedAt} - ${schema.captureBatches.startedAt})), 0)`,
+      })
+      .from(schema.vlmSummaries)
+      .innerJoin(
+        schema.captureBatches,
+        eq(schema.vlmSummaries.batchId, schema.captureBatches.id),
+      )
+      .where(
+        and(
+          eq(schema.vlmSummaries.userId, userId),
+          gte(schema.captureBatches.startedAt, from),
+          lte(schema.captureBatches.startedAt, to),
+        ),
+      )
+      .groupBy(sql`to_char(${schema.captureBatches.startedAt}, 'YYYY-MM-DD')`),
+    db
+      .select({
+        day: sql<string>`to_char(${schema.commitsSeen.committedAt}, 'YYYY-MM-DD')`,
+        commits: sql<number>`count(*)::int`,
+      })
+      .from(schema.commitsSeen)
+      .where(
+        and(
+          eq(schema.commitsSeen.userId, userId),
+          gte(schema.commitsSeen.committedAt, from),
+          lte(schema.commitsSeen.committedAt, to),
+        ),
+      )
+      .groupBy(sql`to_char(${schema.commitsSeen.committedAt}, 'YYYY-MM-DD')`),
+  ]);
+
+  const byDay = new Map<string, { seconds: number; commits: number }>();
+  for (const r of trackRows) {
+    const e = byDay.get(r.day) ?? { seconds: 0, commits: 0 };
+    e.seconds = Number(r.seconds ?? 0);
+    byDay.set(r.day, e);
+  }
+  for (const r of commitRows) {
+    const e = byDay.get(r.day) ?? { seconds: 0, commits: 0 };
+    e.commits = Number(r.commits ?? 0);
+    byDay.set(r.day, e);
+  }
+
+  const days = [...byDay.entries()].map(([date, v]) => ({
+    date,
+    seconds: v.seconds,
+    commits: v.commits,
+  }));
 
   return NextResponse.json({
-    days: rows.map((r) => ({
-      date: r.day,
-      seconds: Number(r.seconds ?? 0),
-      sessions: Number(r.sessions ?? 0),
-    })),
+    days,
     from: from.toISOString(),
     to: to.toISOString(),
   });
