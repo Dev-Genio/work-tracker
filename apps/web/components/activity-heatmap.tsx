@@ -21,8 +21,8 @@ const DAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", ""];
 export function ActivityHeatmap({ days, fromIso, toIso }: Props) {
   const grid = useMemo(() => buildGrid(days, fromIso, toIso), [days, fromIso, toIso]);
 
-  const CELL = 12;
-  const GAP = 3;
+  const CELL = 15;
+  const GAP = 4;
 
   return (
     <div className="w-full">

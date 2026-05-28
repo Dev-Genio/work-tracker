@@ -227,7 +227,7 @@ export default function Today() {
           {heatmapDays.length === 0 ? (
             <Skeleton className="h-24 w-full rounded-md" />
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,auto)_1fr] gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,auto)_1fr] gap-6 items-center">
               <div className="min-w-0 overflow-hidden">
                 <ActivityHeatmap
                   days={heatmapDays}
