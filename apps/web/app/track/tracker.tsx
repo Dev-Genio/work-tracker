@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { CaptureLoop } from "@/lib/capture";
 import { callVlm } from "@/lib/vlm";
+import { dataGetSettings, dataIngest } from "@/lib/data-client";
 import { ghTodayDetailed, listProcesses, onTrayToggle, systemStats } from "@/lib/tauri-bridge";
 import {
   DEFAULT_SETTINGS,
@@ -35,8 +36,7 @@ export default function Tracker() {
 
   useEffect(() => {
     setTauri(isTauri());
-    fetch("/api/settings")
-      .then((r) => r.json())
+    dataGetSettings()
       .then((s) => setSettings({
         vlmModel: s.vlmModel, chatModel: s.chatModel,
         captureIntervalSec: s.captureIntervalSec, batchIntervalSec: s.batchIntervalSec,
@@ -93,28 +93,22 @@ export default function Tracker() {
 
     try {
       append("info", "Calling VLM…");
-      const { summary, raw } = await callVlm({ apiKey: key, model: settings.vlmModel, batch: enriched });
+      const { summary } = await callVlm({ apiKey: key, model: settings.vlmModel, batch: enriched });
       setLastSummary(summary);
 
-      const res = await fetch("/api/ingest", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          runtime: isTauri() ? "tauri" : "browser",
-          startedAt: batch.startedAt,
-          endedAt: batch.endedAt,
-          // Only the count — JPEG bytes stay client-side, used for the VLM
-          // call above and then discarded. Never stored in Neon.
-          frameCount: enriched.frames.length,
-          processes: enriched.processes ?? null,
-          system: enriched.system ?? null,
-          commits: enriched.commits ?? [],
-          model: settings.vlmModel,
-          summary,
-          rawJson: raw,
-        }),
+      await dataIngest({
+        runtime: isTauri() ? "tauri" : "browser",
+        startedAt: batch.startedAt,
+        endedAt: batch.endedAt,
+        // Only the count — JPEG bytes stay client-side, used for the VLM
+        // call above and then discarded.
+        frameCount: enriched.frames.length,
+        processes: enriched.processes ?? null,
+        system: enriched.system ?? null,
+        commits: enriched.commits ?? [],
+        model: settings.vlmModel,
+        summary,
       });
-      if (!res.ok) throw new Error(`ingest ${res.status}`);
       append("ok", summary.activity);
       setFrames(0);
     } catch (e) {

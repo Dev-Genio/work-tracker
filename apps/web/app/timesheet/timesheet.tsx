@@ -12,6 +12,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { formatHm, isoDate, startOfWeek } from "@/lib/time";
+import { dataGet } from "@/lib/data-client";
+import { isLocalMode } from "@/lib/storage-mode";
+import { localExportCsv } from "@/lib/csv";
 
 interface Row { key: string; seconds: number; focusAvg: number; entries: number; }
 type GroupBy = "project" | "app" | "day";
@@ -27,13 +30,11 @@ export default function Timesheet() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams({
+    const data = await dataGet<{ rows: Row[] }>("timesheet", {
       from: new Date(from + "T00:00:00").toISOString(),
       to: new Date(to + "T23:59:59").toISOString(),
       groupBy,
     });
-    const res = await fetch(`/api/timesheet?${params}`);
-    const data = await res.json();
     setRows(data.rows ?? []);
     setLoading(false);
   }, [from, to, groupBy]);
@@ -75,11 +76,25 @@ export default function Timesheet() {
               </Tabs>
             </div>
             <div className="flex-1" />
-            <Button asChild variant="secondary">
-              <a href={`/api/export/csv?${exportParams}`}>
+            {isLocalMode() ? (
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  localExportCsv(
+                    new Date(from + "T00:00:00").toISOString(),
+                    new Date(to + "T23:59:59").toISOString(),
+                  )
+                }
+              >
                 <Download className="h-4 w-4" /> CSV
-              </a>
-            </Button>
+              </Button>
+            ) : (
+              <Button asChild variant="secondary">
+                <a href={`/api/export/csv?${exportParams}`}>
+                  <Download className="h-4 w-4" /> CSV
+                </a>
+              </Button>
+            )}
             <Button variant="outline" onClick={() => window.print()}>
               <Printer className="h-4 w-4" /> Print
             </Button>

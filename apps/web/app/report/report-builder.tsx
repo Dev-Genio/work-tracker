@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Markdown } from "@/components/markdown";
 
 import { generateReport } from "@/lib/report";
+import { dataGet, dataGetSettings } from "@/lib/data-client";
 import { isoDate } from "@/lib/time";
 import {
   DEFAULT_SETTINGS,
@@ -46,8 +47,7 @@ export default function ReportBuilder() {
   const [report, setReport] = useState<string>("");
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
+    dataGetSettings()
       .then((s) => setSettings({
         vlmModel: s.vlmModel, chatModel: s.chatModel,
         captureIntervalSec: s.captureIntervalSec, batchIntervalSec: s.batchIntervalSec,
@@ -58,12 +58,10 @@ export default function ReportBuilder() {
   const loadProjects = useCallback(async () => {
     setLoadingProjects(true);
     try {
-      const params = new URLSearchParams({
+      const data = await dataGet<{ projects: ProjectRow[] }>("projects", {
         from: new Date(from + "T00:00:00").toISOString(),
         to: new Date(to + "T23:59:59").toISOString(),
       });
-      const res = await fetch(`/api/projects?${params}`);
-      const data = await res.json();
       setAllProjects(data.projects ?? []);
     } catch (e) {
       toast.error(String(e));

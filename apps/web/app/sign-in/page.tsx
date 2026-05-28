@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, HardDrive } from "lucide-react";
 import { toast } from "sonner";
 
 import { authClient } from "@/lib/auth/client";
+import { setStorageMode } from "@/lib/storage-mode";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -137,6 +138,23 @@ export default function SignInPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Local-only mode: no account, data stays on this device. */}
+        <button
+          onClick={() => {
+            setStorageMode("local");
+            window.location.href = "/dashboard";
+          }}
+          className="w-full text-left rounded-xl border bg-card hover:bg-accent transition-colors px-4 py-3 flex items-center gap-3"
+        >
+          <HardDrive className="h-5 w-5 text-muted-foreground shrink-0" />
+          <span className="text-sm">
+            <span className="font-medium">Use this device only</span>
+            <span className="block text-xs text-muted-foreground">
+              No account. Everything stays in this browser/app — fully private.
+            </span>
+          </span>
+        </button>
 
         <p className="text-xs text-muted-foreground text-center leading-relaxed">
           Your OpenRouter key never leaves your browser.

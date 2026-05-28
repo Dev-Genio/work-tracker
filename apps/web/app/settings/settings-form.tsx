@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { redirect } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Check, Download, Eye, EyeOff, Loader2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { isTauri } from "@work-tracker/shared";
@@ -36,6 +36,14 @@ import {
   type ServerSettings,
 } from "@/lib/settings-store";
 import { ghAuthStatus, isAutostartEnabled, setAutostart } from "@/lib/tauri-bridge";
+import { dataGetSettings, dataPutSettings } from "@/lib/data-client";
+import { getStorageMode, setStorageMode, type StorageMode } from "@/lib/storage-mode";
+import {
+  localClear,
+  localExport,
+  localImport,
+  localUsage,
+} from "@/lib/db-local";
 
 type KeyStatus = "unknown" | "checking" | "valid" | "invalid";
 
@@ -52,21 +60,19 @@ export default function SettingsForm() {
   const [autostartOn, setAutostartOn] = useState(false);
   const [ghStatus, setGhStatus] = useState<string>("");
   const [ghChecking, setGhChecking] = useState(false);
+  const [mode, setMode] = useState<StorageMode>("cloud");
+  const [usage, setUsage] = useState<{ sessions: number; commits: number; estBytes: number } | null>(null);
 
   useEffect(() => {
+    setMode(getStorageMode());
+    if (getStorageMode() === "local") void localUsage().then(setUsage);
     const k = getOpenRouterKey() ?? "";
     setKey(k);
     const inTauri = isTauri();
     setTauri(inTauri);
     if (inTauri) void isAutostartEnabled().then(setAutostartOn);
-    fetch("/api/settings")
-      .then(async (r) => {
-        if (r.status === 401) {
-          redirect("/sign-in");
-          return;
-        }
-        if (!r.ok) throw new Error(`settings: ${r.status}`);
-        const s = (await r.json()) as ServerSettings;
+    dataGetSettings()
+      .then((s) => {
         setSettings({
           vlmModel: s.vlmModel,
           chatModel: s.chatModel,
@@ -110,17 +116,64 @@ export default function SettingsForm() {
     if (key && keyStatus === "unknown") void validate();
   }, [key, keyStatus, validate]);
 
+  function switchMode(next: StorageMode) {
+    if (next === mode) return;
+    setStorageMode(next);
+    setMode(next);
+    if (next === "local") void localUsage().then(setUsage);
+    else setUsage(null);
+    toast.success(next === "local" ? "Switched to local-only mode." : "Switched to cloud account.");
+    // Reload so server pages re-evaluate auth/data source.
+    setTimeout(() => window.location.reload(), 400);
+  }
+
+  async function exportData() {
+    try {
+      const json = await localExport();
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `work-tracker-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
+  async function importData(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const res = await localImport(text);
+      void localUsage().then(setUsage);
+      toast.success(`Imported ${res.sessions} sessions, ${res.commits} commits.`);
+    } catch (err) {
+      toast.error(`Import failed: ${String(err)}`);
+    } finally {
+      e.target.value = "";
+    }
+  }
+
+  async function clearData() {
+    if (!confirm("Delete all locally stored tracking data? This cannot be undone.")) return;
+    try {
+      await localClear();
+      void localUsage().then(setUsage);
+      toast.success("Local data cleared.");
+    } catch (e) {
+      toast.error(String(e));
+    }
+  }
+
   async function save() {
     setSaving(true);
     try {
       if (key.trim()) setOpenRouterKey(key.trim());
       else clearOpenRouterKey();
-      const res = await fetch("/api/settings", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(settings),
-      });
-      if (!res.ok) throw new Error(`save: ${res.status}`);
+      await dataPutSettings(settings);
       toast.success("Settings saved.");
     } catch (e) {
       toast.error(String(e));
@@ -135,6 +188,57 @@ export default function SettingsForm() {
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground">Configure your OpenRouter key and tracking cadence.</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Storage &amp; privacy</CardTitle>
+          <CardDescription>
+            Choose where your tracked data lives. Switching does not migrate
+            existing data between cloud and this device.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <ModeOption
+              active={mode === "cloud"}
+              title="Cloud account"
+              desc="Synced to your account (Neon). Available across devices."
+              onClick={() => switchMode("cloud")}
+            />
+            <ModeOption
+              active={mode === "local"}
+              title="This device only"
+              desc="Everything stays in this browser/app. Nothing leaves the device."
+              onClick={() => switchMode("local")}
+            />
+          </div>
+
+          {mode === "local" && (
+            <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+              {usage && (
+                <p className="text-xs text-muted-foreground">
+                  {usage.sessions} sessions · {usage.commits} commits
+                  {usage.estBytes > 0 && ` · ~${(usage.estBytes / 1024 / 1024).toFixed(1)} MB used`}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" onClick={exportData}>
+                  <Download className="h-3.5 w-3.5" /> Export JSON
+                </Button>
+                <Button size="sm" variant="secondary" asChild>
+                  <label className="cursor-pointer">
+                    <Upload className="h-3.5 w-3.5" /> Import JSON
+                    <input type="file" accept="application/json" className="hidden" onChange={importData} />
+                  </label>
+                </Button>
+                <Button size="sm" variant="destructive" onClick={clearData}>
+                  <Trash2 className="h-3.5 w-3.5" /> Clear local data
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -309,6 +413,29 @@ export default function SettingsForm() {
         </Button>
       </div>
     </div>
+  );
+}
+
+function ModeOption({
+  active, title, desc, onClick,
+}: { active: boolean; title: string; desc: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`text-left rounded-lg border p-3 transition-colors ${
+        active ? "border-primary bg-primary/5" : "hover:bg-accent"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={`h-3.5 w-3.5 rounded-full border-2 ${
+            active ? "border-primary bg-primary" : "border-muted-foreground"
+          }`}
+        />
+        <span className="text-sm font-medium">{title}</span>
+      </div>
+      <p className="text-xs text-muted-foreground mt-1 ml-5.5">{desc}</p>
+    </button>
   );
 }
 

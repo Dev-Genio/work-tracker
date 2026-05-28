@@ -1,6 +1,7 @@
 "use client";
 
 import { formatDigest } from "@/lib/digest";
+import { dataGet } from "@/lib/data-client";
 
 const CHAT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -51,17 +52,11 @@ Rules:
 - Don't hallucinate work that isn't in the data.`;
 
 export async function generateReport(req: ReportRequest): Promise<string> {
-  const params = new URLSearchParams({
-    from: req.fromIso,
-    to: req.toIso,
-    limit: "200",
-  });
-  const [summariesRes, commitsRes] = await Promise.all([
-    fetch(`/api/summaries?${params}`),
-    fetch(`/api/commits?${params}`),
+    const q = { from: req.fromIso, to: req.toIso, limit: 1000 };
+  const [{ summaries = [] }, { commits = [] }] = await Promise.all([
+    dataGet<{ summaries: Summary[] }>("summaries", q),
+    dataGet<{ commits: Commit[] }>("commits", q),
   ]);
-  const { summaries = [] } = (await summariesRes.json()) as { summaries: Summary[] };
-  const { commits = [] } = (await commitsRes.json()) as { commits: Commit[] };
 
   const filtered =
     req.projects.length === 0

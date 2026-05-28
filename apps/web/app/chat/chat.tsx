@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 
 import { runAgent, type TraceStep } from "@/lib/agent";
 import { fetchTodayDigest } from "@/lib/digest";
+import { dataGetSettings } from "@/lib/data-client";
 import {
   DEFAULT_SETTINGS,
   getOpenRouterKey,
@@ -42,8 +43,7 @@ export default function Chat() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
+    dataGetSettings()
       .then((s) => setSettings({
         vlmModel: s.vlmModel, chatModel: s.chatModel,
         captureIntervalSec: s.captureIntervalSec, batchIntervalSec: s.batchIntervalSec,

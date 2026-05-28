@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ActivityHeatmap, type HeatmapDay } from "@/components/activity-heatmap";
-// HeatmapDay is used by HeatmapRollups too; the type re-import is intentional.
+import { dataGet } from "@/lib/data-client";
 import { formatHm, isoDate, startOfDay, startOfWeek } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -87,27 +87,19 @@ export default function Today() {
   // Fetch paginated summaries + total count + commits
   const loadList = useCallback(async (silent = false) => {
     if (!silent) setSummaries(null);
-    const params = new URLSearchParams({
-      from: fromIso,
-      to: toIso,
-      limit: String(pageSize),
-      offset: String(page * pageSize),
-      order: "desc",
-    });
-    const rangeQ = `from=${fromIso}&to=${toIso}`;
     const [sRes, cRes, appRes] = await Promise.all([
-      fetch(`/api/summaries?${params}`).then((r) => r.json()),
-      fetch(`/api/commits?${rangeQ}`).then((r) => r.json()),
-      fetch(`/api/timesheet?${rangeQ}&groupBy=app`).then((r) => r.json()),
+      dataGet<{ summaries: Summary[]; total: number; totalSeconds: number; focusAvg: number }>("summaries", {
+        from: fromIso, to: toIso, limit: pageSize, offset: page * pageSize, order: "desc",
+      }),
+      dataGet<{ commits: Commit[] }>("commits", { from: fromIso, to: toIso }),
+      dataGet<{ rows: { key: string; seconds: number }[] }>("timesheet", { from: fromIso, to: toIso, groupBy: "app" }),
     ]);
     setSummaries(sRes.summaries ?? []);
     setTotal(Number(sRes.total ?? 0));
     setRangeSeconds(Number(sRes.totalSeconds ?? 0));
     setRangeFocus(Number(sRes.focusAvg ?? 0));
     setCommits(cRes.commits ?? []);
-    setByApp(
-      (appRes.rows ?? []).slice(0, 8).map((r: { key: string; seconds: number }) => [r.key, r.seconds] as [string, number]),
-    );
+    setByApp((appRes.rows ?? []).slice(0, 8).map((r) => [r.key, r.seconds] as [string, number]));
   }, [fromIso, toIso, pageSize, page]);
 
   // Fetch per-day totals — always wide enough to fill the heatmap.
@@ -119,9 +111,7 @@ export default function Today() {
     start.setDate(start.getDate() - days + 1);
     const hmFromIso = startOfDay(start).toISOString();
     const hmToIso = new Date().toISOString();
-    const res = await fetch(
-      `/api/heatmap?from=${hmFromIso}&to=${hmToIso}`,
-    ).then((r) => r.json());
+    const res = await dataGet<{ days: HeatmapDay[] }>("heatmap", { from: hmFromIso, to: hmToIso });
     setHeatmapDays(res.days ?? []);
     setHeatmapRange({ fromIso: hmFromIso, toIso: hmToIso });
   }, [from, to]);

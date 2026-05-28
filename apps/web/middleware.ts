@@ -1,12 +1,17 @@
+import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/lib/auth/server";
+import { STORAGE_MODE_COOKIE } from "@/lib/storage-mode";
 
-// 1. Exchanges OAuth verifier (?neon_auth_session_verifier=…) for a session
-//    cookie on our origin (the missing piece for the Google callback).
-// 2. Redirects unauthenticated requests on protected routes to /sign-in.
-//
-// We intentionally exclude "/" and "/sign-in" via the matcher so the
-// marketing landing and login pages stay public.
-export default auth.middleware({ loginUrl: "/sign-in" });
+const authMiddleware = auth.middleware({ loginUrl: "/sign-in" });
+
+// In local-only mode there is no account — data lives in the browser's
+// IndexedDB — so we skip the auth/session check entirely. Cloud mode keeps
+// the OAuth verifier exchange + protected-route redirect.
+export default function middleware(req: NextRequest) {
+  const mode = req.cookies.get(STORAGE_MODE_COOKIE)?.value;
+  if (mode === "local") return NextResponse.next();
+  return authMiddleware(req);
+}
 
 export const config = {
   matcher: [

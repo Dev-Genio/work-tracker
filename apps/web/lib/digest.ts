@@ -1,12 +1,19 @@
+"use client";
+
+import { dataGet } from "@/lib/data-client";
+
 /**
  * Builds a natural-language digest of today's activity that we hand to the
  * chat agent as a primer — so it can answer "what did I do today" style
  * questions without making any tool calls.
  */
 export async function fetchTodayDigest(): Promise<string> {
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const range = { from: startOfToday.toISOString(), to: new Date().toISOString() };
   const [s, c] = await Promise.all([
-    fetch("/api/summaries").then((r) => r.json()),
-    fetch("/api/commits").then((r) => r.json()),
+    dataGet<{ summaries: Summary[] }>("summaries", range),
+    dataGet<{ commits: Commit[] }>("commits", range),
   ]);
   return formatDigest(s.summaries ?? [], c.commits ?? []);
 }

@@ -5,6 +5,8 @@
 //   model -> JSON {tool, args} -> we execute -> feed result back -> repeat
 //   until model emits {final: "..."}.
 
+import { dataGet } from "@/lib/data-client";
+
 const CHAT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 export type Tool =
@@ -76,12 +78,7 @@ const TOOLS: ToolDef[] = [
       "THE PRIMARY TOOL for 'what did I do on <day/range>' AND for system resource questions. Returns the COMPLETE day condensed in one call: total time, focus, project & app breakdowns, merged activity time-blocks, commits, plus systemUsage (avg/peak CPU %, avg/peak memory MB, total memory) and topProcesses (most-seen process names with avg CPU and peak memory). systemUsage/topProcesses come from the desktop tracker and are null/empty for days tracked only in the browser. Use this instead of paging search_logs.",
     argsHint:
       '{ "from": ISO datetime (local day start, e.g. 2026-05-27T00:00:00+05:30), "to": ISO datetime (local day end) }',
-    execute: async (args) => {
-      const p = new URLSearchParams();
-      for (const [k, v] of Object.entries(args)) if (v != null) p.set(k, String(v));
-      const r = await fetch(`/api/rag/day?${p}`);
-      return sanitize(await r.json());
-    },
+    execute: async (args) => sanitize(await dataGet("rag/day", args as Record<string, string>)),
   },
   {
     name: "search_logs",
@@ -89,12 +86,7 @@ const TOOLS: ToolDef[] = [
       "Free-text search over the user's tracked work summaries OUTSIDE of today. Use only when the user asks about past days, weeks, specific topics not in today's primer, or other apps/projects.",
     argsHint:
       '{ "q"?: string, "from"?: ISO datetime, "to"?: ISO datetime, "app"?: string, "project"?: string, "limit"?: number (<=100) }',
-    execute: async (args) => {
-      const p = new URLSearchParams();
-      for (const [k, v] of Object.entries(args)) if (v != null) p.set(k, String(v));
-      const r = await fetch(`/api/rag/search?${p}`);
-      return sanitize(await r.json());
-    },
+    execute: async (args) => sanitize(await dataGet("rag/search", args as Record<string, string>)),
   },
   {
     name: "aggregate_time",
@@ -102,24 +94,14 @@ const TOOLS: ToolDef[] = [
       "Sum tracked time grouped by project, app, or day. Use for 'how many hours on X this week', timesheet questions, breakdowns spanning more than today.",
     argsHint:
       '{ "groupBy": "project" | "app" | "day", "from"?: ISO datetime, "to"?: ISO datetime }',
-    execute: async (args) => {
-      const p = new URLSearchParams();
-      for (const [k, v] of Object.entries(args)) if (v != null) p.set(k, String(v));
-      const r = await fetch(`/api/timesheet?${p}`);
-      return sanitize(await r.json());
-    },
+    execute: async (args) => sanitize(await dataGet("timesheet", args as Record<string, string>)),
   },
   {
     name: "get_commits",
     description:
       "List git commits authored by the user in a date range OTHER than today. Today's commits are already in the primer.",
     argsHint: '{ "from"?: ISO datetime, "to"?: ISO datetime }',
-    execute: async (args) => {
-      const p = new URLSearchParams();
-      for (const [k, v] of Object.entries(args)) if (v != null) p.set(k, String(v));
-      const r = await fetch(`/api/commits?${p}`);
-      return sanitize(await r.json());
-    },
+    execute: async (args) => sanitize(await dataGet("commits", args as Record<string, string>)),
   },
 ];
 
