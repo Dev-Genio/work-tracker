@@ -71,6 +71,10 @@ export default function Today() {
   // Data
   const [summaries, setSummaries] = useState<Summary[] | null>(null);
   const [total, setTotal] = useState<number>(0);
+  const [rangeSeconds, setRangeSeconds] = useState<number>(0);
+  const [rangeFocus, setRangeFocus] = useState<number>(0);
+  const [byProject, setByProject] = useState<[string, number][]>([]);
+  const [byApp, setByApp] = useState<[string, number][]>([]);
   const [commits, setCommits] = useState<Commit[] | null>(null);
   const [heatmapDays, setHeatmapDays] = useState<HeatmapDay[]>([]);
   const [heatmapRange, setHeatmapRange] = useState<{ fromIso: string; toIso: string }>({
@@ -91,13 +95,24 @@ export default function Today() {
       offset: String(page * pageSize),
       order: "desc",
     });
-    const [sRes, cRes] = await Promise.all([
+    const rangeQ = `from=${fromIso}&to=${toIso}`;
+    const [sRes, cRes, projRes, appRes] = await Promise.all([
       fetch(`/api/summaries?${params}`).then((r) => r.json()),
-      fetch(`/api/commits?from=${fromIso}&to=${toIso}`).then((r) => r.json()),
+      fetch(`/api/commits?${rangeQ}`).then((r) => r.json()),
+      fetch(`/api/timesheet?${rangeQ}&groupBy=project`).then((r) => r.json()),
+      fetch(`/api/timesheet?${rangeQ}&groupBy=app`).then((r) => r.json()),
     ]);
     setSummaries(sRes.summaries ?? []);
     setTotal(Number(sRes.total ?? 0));
+    setRangeSeconds(Number(sRes.totalSeconds ?? 0));
+    setRangeFocus(Number(sRes.focusAvg ?? 0));
     setCommits(cRes.commits ?? []);
+    setByProject(
+      (projRes.rows ?? []).map((r: { key: string; seconds: number }) => [r.key, r.seconds] as [string, number]),
+    );
+    setByApp(
+      (appRes.rows ?? []).slice(0, 8).map((r: { key: string; seconds: number }) => [r.key, r.seconds] as [string, number]),
+    );
   }, [fromIso, toIso, pageSize, page]);
 
   // Fetch per-day totals — always wide enough to fill the heatmap.
@@ -136,34 +151,6 @@ export default function Today() {
       setTo(r.to);
     }
   }
-
-  const stats = useMemo(() => {
-    if (!summaries) return null;
-    let total = 0;
-    const byProject = new Map<string, number>();
-    const byApp = new Map<string, number>();
-    let focusSum = 0;
-    for (const s of summaries) {
-      const d =
-        (new Date(s.endedAt).getTime() - new Date(s.startedAt).getTime()) / 1000;
-      total += Math.max(0, d);
-      focusSum += s.focusScore;
-      byProject.set(
-        s.projectGuess ?? "(unknown)",
-        (byProject.get(s.projectGuess ?? "(unknown)") ?? 0) + Math.max(0, d),
-      );
-      byApp.set(
-        s.app ?? "(unknown)",
-        (byApp.get(s.app ?? "(unknown)") ?? 0) + Math.max(0, d),
-      );
-    }
-    return {
-      total,
-      focusAvg: summaries.length > 0 ? focusSum / summaries.length : 0,
-      byProject: [...byProject.entries()].sort((a, b) => b[1] - a[1]),
-      byApp: [...byApp.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8),
-    };
-  }, [summaries]);
 
   const dailyChart = useMemo(() => {
     return heatmapDays
@@ -221,9 +208,9 @@ export default function Today() {
           </>
         ) : (
           <>
-            <Stat icon={<Clock className="h-4 w-4" />} label="Tracked" value={formatHm(stats!.total)} />
+            <Stat icon={<Clock className="h-4 w-4" />} label="Tracked" value={formatHm(rangeSeconds)} />
             <Stat icon={<Sparkles className="h-4 w-4" />} label="Sessions" value={String(total)} />
-            <Stat icon={<Target className="h-4 w-4" />} label="Avg focus" value={`${(stats!.focusAvg * 100).toFixed(0)}%`} />
+            <Stat icon={<Target className="h-4 w-4" />} label="Avg focus" value={`${(rangeFocus * 100).toFixed(0)}%`} />
             <Stat icon={<GitCommit className="h-4 w-4" />} label="Commits" value={String(commits?.length ?? 0)} />
           </>
         )}
@@ -254,8 +241,8 @@ export default function Today() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <BreakdownCard title="By project" data={stats?.byProject ?? []} loading={loadingList} />
-        <BreakdownCard title="By app" data={stats?.byApp ?? []} loading={loadingList} />
+        <BreakdownCard title="By project" data={byProject} loading={loadingList} />
+        <BreakdownCard title="By app" data={byApp} loading={loadingList} />
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Daily activity</CardTitle>

@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     lte(schema.captureBatches.startedAt, to),
   );
 
-  const [rows, totalRow] = await Promise.all([
+  const [rows, totalRow, aggRow] = await Promise.all([
     db
       .select({
         id: schema.vlmSummaries.id,
@@ -62,11 +62,26 @@ export async function GET(req: Request) {
         eq(schema.vlmSummaries.batchId, schema.captureBatches.id),
       )
       .where(where),
+    // Range-wide aggregates — independent of pagination — so the dashboard
+    // KPIs reflect the whole selected period, not just the current page.
+    db
+      .select({
+        totalSeconds: sql<number>`coalesce(extract(epoch from sum(${schema.captureBatches.endedAt} - ${schema.captureBatches.startedAt})), 0)`,
+        focusAvg: sql<number>`coalesce(avg(${schema.vlmSummaries.focusScore}), 0)`,
+      })
+      .from(schema.vlmSummaries)
+      .innerJoin(
+        schema.captureBatches,
+        eq(schema.vlmSummaries.batchId, schema.captureBatches.id),
+      )
+      .where(where),
   ]);
 
   return NextResponse.json({
     summaries: rows,
     total: Number(totalRow[0]?.count ?? 0),
+    totalSeconds: Number(aggRow[0]?.totalSeconds ?? 0),
+    focusAvg: Number(aggRow[0]?.focusAvg ?? 0),
     limit,
     offset,
     order,
