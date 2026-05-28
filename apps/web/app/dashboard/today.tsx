@@ -73,7 +73,6 @@ export default function Today() {
   const [total, setTotal] = useState<number>(0);
   const [rangeSeconds, setRangeSeconds] = useState<number>(0);
   const [rangeFocus, setRangeFocus] = useState<number>(0);
-  const [byProject, setByProject] = useState<[string, number][]>([]);
   const [byApp, setByApp] = useState<[string, number][]>([]);
   const [commits, setCommits] = useState<Commit[] | null>(null);
   const [heatmapDays, setHeatmapDays] = useState<HeatmapDay[]>([]);
@@ -96,10 +95,9 @@ export default function Today() {
       order: "desc",
     });
     const rangeQ = `from=${fromIso}&to=${toIso}`;
-    const [sRes, cRes, projRes, appRes] = await Promise.all([
+    const [sRes, cRes, appRes] = await Promise.all([
       fetch(`/api/summaries?${params}`).then((r) => r.json()),
       fetch(`/api/commits?${rangeQ}`).then((r) => r.json()),
-      fetch(`/api/timesheet?${rangeQ}&groupBy=project`).then((r) => r.json()),
       fetch(`/api/timesheet?${rangeQ}&groupBy=app`).then((r) => r.json()),
     ]);
     setSummaries(sRes.summaries ?? []);
@@ -107,9 +105,6 @@ export default function Today() {
     setRangeSeconds(Number(sRes.totalSeconds ?? 0));
     setRangeFocus(Number(sRes.focusAvg ?? 0));
     setCommits(cRes.commits ?? []);
-    setByProject(
-      (projRes.rows ?? []).map((r: { key: string; seconds: number }) => [r.key, r.seconds] as [string, number]),
-    );
     setByApp(
       (appRes.rows ?? []).slice(0, 8).map((r: { key: string; seconds: number }) => [r.key, r.seconds] as [string, number]),
     );
@@ -157,6 +152,13 @@ export default function Today() {
       .slice()
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((d) => ({ date: d.date.slice(5), minutes: Math.round(d.seconds / 60) }));
+  }, [heatmapDays]);
+
+  const commitsChart = useMemo(() => {
+    return heatmapDays
+      .slice()
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((d) => ({ date: d.date.slice(5), commits: d.commits }));
   }, [heatmapDays]);
 
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -241,65 +243,36 @@ export default function Today() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <BreakdownCard title="By project" data={byProject} loading={loadingList} />
-        <BreakdownCard title="By app" data={byApp} loading={loadingList} />
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Daily activity</CardTitle>
+            <CardTitle className="text-sm font-medium">App focus</CardTitle>
           </CardHeader>
           <CardContent>
-            {dailyChart.length === 0 ? (
+            {loadingList ? (
               <Skeleton className="h-56 w-full" />
-            ) : dailyChart.filter((d) => d.minutes > 0).length <= 1 ? (
-              // Recharts can't draw a continuous area/line from a single
-              // non-zero point. Fall back to a bar chart so the data shows.
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyChart} margin={{ left: 8, right: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={10} interval="preserveStartEnd" />
-                    <YAxis stroke="var(--muted-foreground)" fontSize={10} />
-                    <RechartsTooltip
-                      cursor={{ fill: "var(--accent)", opacity: 0.4 }}
-                      contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                      formatter={(v) => [`${v} min`, "Tracked"]}
-                    />
-                    <Bar dataKey="minutes" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
             ) : (
-              <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={dailyChart} margin={{ left: 8, right: 8 }}>
-                    <defs>
-                      <linearGradient id="dailyFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.5} />
-                        <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={10} interval="preserveStartEnd" />
-                    <YAxis stroke="var(--muted-foreground)" fontSize={10} />
-                    <RechartsTooltip
-                      cursor={{ stroke: "var(--accent)" }}
-                      contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                      formatter={(v) => [`${v} min`, "Tracked"]}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="minutes"
-                      stroke="var(--chart-1)"
-                      fill="url(#dailyFill)"
-                      strokeWidth={2}
-                      dot={{ r: 2, fill: "var(--chart-1)" }}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <ActivityRings data={byApp} />
             )}
           </CardContent>
         </Card>
+
+        <TrendCard
+          title="Daily activity"
+          loading={loadingList}
+          data={dailyChart}
+          dataKey="minutes"
+          unit="min"
+          gradientId="dailyFill"
+        />
+
+        <TrendCard
+          title="Daily commits"
+          loading={loadingList}
+          data={commitsChart}
+          dataKey="commits"
+          unit="commits"
+          gradientId="commitsFill"
+        />
       </div>
 
       {/* Timeline */}
@@ -590,13 +563,69 @@ function Stat({
   );
 }
 
-function BreakdownCard({
-  title, data, loading,
-}: { title: string; data: [string, number][]; loading: boolean }) {
-  const chartData = data.slice(0, 8).map(([name, seconds]) => ({
-    name,
-    minutes: Math.round(seconds / 60),
-  }));
+const RING_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)"];
+
+function ActivityRings({ data }: { data: [string, number][] }) {
+  const top = data.slice(0, 4);
+  if (top.length === 0) {
+    return <p className="text-sm text-muted-foreground h-56 flex items-center justify-center">No data.</p>;
+  }
+  const max = top[0][1] || 1;
+  const size = 180;
+  const center = size / 2;
+  const stroke = 16;
+  const gap = 4;
+
+  return (
+    <div className="h-56 flex flex-col items-center justify-center gap-4">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          {top.map(([, seconds], i) => {
+            const radius = center - stroke / 2 - i * (stroke + gap);
+            const circ = 2 * Math.PI * radius;
+            const frac = Math.max(0.02, Math.min(1, seconds / max));
+            return (
+              <g key={i}>
+                <circle
+                  cx={center} cy={center} r={radius}
+                  fill="none" stroke="var(--muted)" strokeOpacity={0.35} strokeWidth={stroke}
+                />
+                <circle
+                  cx={center} cy={center} r={radius}
+                  fill="none" stroke={RING_COLORS[i]} strokeWidth={stroke}
+                  strokeLinecap="round"
+                  strokeDasharray={circ}
+                  strokeDashoffset={circ * (1 - frac)}
+                />
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+      <ul className="w-full space-y-1 text-xs">
+        {top.map(([name, seconds], i) => (
+          <li key={name} className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: RING_COLORS[i] }} />
+            <span className="truncate flex-1">{name}</span>
+            <span className="text-muted-foreground tabular-nums shrink-0">{formatHm(seconds)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function TrendCard({
+  title, loading, data, dataKey, unit, gradientId,
+}: {
+  title: string;
+  loading: boolean;
+  data: Array<Record<string, string | number>>;
+  dataKey: string;
+  unit: string;
+  gradientId: string;
+}) {
+  const nonZero = data.filter((d) => Number(d[dataKey]) > 0).length;
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -605,22 +634,51 @@ function BreakdownCard({
       <CardContent>
         {loading ? (
           <Skeleton className="h-56 w-full" />
-        ) : chartData.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No data.</p>
-        ) : (
+        ) : data.length === 0 ? (
+          <p className="text-sm text-muted-foreground h-56 flex items-center justify-center">No data.</p>
+        ) : nonZero <= 1 ? (
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                <XAxis type="number" stroke="var(--muted-foreground)" fontSize={11} />
-                <YAxis dataKey="name" type="category" width={120} stroke="var(--muted-foreground)" fontSize={11} />
+              <BarChart data={data} margin={{ left: 8, right: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={10} interval="preserveStartEnd" />
+                <YAxis stroke="var(--muted-foreground)" fontSize={10} allowDecimals={false} />
                 <RechartsTooltip
                   cursor={{ fill: "var(--accent)", opacity: 0.4 }}
                   contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
-                  formatter={(v) => [`${v} min`, ""]}
+                  formatter={(v) => [`${v} ${unit}`, ""]}
                 />
-                <Bar dataKey="minutes" fill="var(--chart-1)" radius={[0, 4, 4, 0]} />
+                <Bar dataKey={dataKey} fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
               </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data} margin={{ left: 8, right: 8 }}>
+                <defs>
+                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.5} />
+                    <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={10} interval="preserveStartEnd" />
+                <YAxis stroke="var(--muted-foreground)" fontSize={10} allowDecimals={false} />
+                <RechartsTooltip
+                  cursor={{ stroke: "var(--accent)" }}
+                  contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12 }}
+                  formatter={(v) => [`${v} ${unit}`, ""]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke="var(--chart-1)"
+                  fill={`url(#${gradientId})`}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         )}
