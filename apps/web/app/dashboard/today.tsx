@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ActivityHeatmap, type HeatmapDay } from "@/components/activity-heatmap";
+// HeatmapDay is used by HeatmapRollups too; the type re-import is intentional.
 import { formatHm, isoDate, startOfDay, startOfWeek } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -228,7 +229,7 @@ export default function Today() {
         )}
       </div>
 
-      {/* Heatmap */}
+      {/* Heatmap + rollups (bento) */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium">Activity heatmap</CardTitle>
@@ -237,11 +238,16 @@ export default function Today() {
           {heatmapDays.length === 0 ? (
             <Skeleton className="h-24 w-full rounded-md" />
           ) : (
-            <ActivityHeatmap
-              days={heatmapDays}
-              fromIso={heatmapRange.fromIso}
-              toIso={heatmapRange.toIso}
-            />
+            <div className="grid grid-cols-1 xl:grid-cols-[auto_1fr] gap-6 items-start">
+              <div className="min-w-0">
+                <ActivityHeatmap
+                  days={heatmapDays}
+                  fromIso={heatmapRange.fromIso}
+                  toIso={heatmapRange.toIso}
+                />
+              </div>
+              <HeatmapRollups days={heatmapDays} />
+            </div>
           )}
         </CardContent>
       </Card>
@@ -434,6 +440,108 @@ export default function Today() {
       )}
     </div>
   );
+}
+
+function HeatmapRollups({ days }: { days: HeatmapDay[] }) {
+  const stats = useMemo(() => computeRollups(days), [days]);
+  return (
+    <div className="grid grid-cols-2 gap-3 min-w-[260px]">
+      <Tile label="Last 7 days" value={formatHm(stats.last7)} sub={`${stats.daysActive7}/7 days active`} />
+      <Tile label="Last 30 days" value={formatHm(stats.last30)} sub={`${stats.daysActive30}/30 days active`} />
+      <Tile label="Current streak" value={`${stats.streak}d`} sub={stats.streak > 0 ? "Keep it up" : "Start one today"} />
+      <Tile label="Best day" value={stats.best ? formatHm(stats.best.seconds) : "—"} sub={stats.best ? stats.best.date : "no data yet"} />
+      <Tile className="col-span-2" label="Most active weekday" value={stats.bestWeekday.name} sub={`avg ${formatHm(stats.bestWeekday.avg)}`} />
+    </div>
+  );
+}
+
+function Tile({
+  label, value, sub, className,
+}: { label: string; value: string; sub: string; className?: string }) {
+  return (
+    <div className={cn("rounded-md border bg-muted/20 p-3", className)}>
+      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-xl font-semibold tabular-nums mt-0.5">{value}</div>
+      <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>
+    </div>
+  );
+}
+
+interface Rollups {
+  last7: number;
+  last30: number;
+  daysActive7: number;
+  daysActive30: number;
+  streak: number;
+  best: { date: string; seconds: number } | null;
+  bestWeekday: { name: string; avg: number };
+}
+
+function computeRollups(days: HeatmapDay[]): Rollups {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const byDate = new Map(days.map((d) => [d.date, d.seconds]));
+
+  function nDays(n: number): { total: number; active: number } {
+    let total = 0;
+    let active = 0;
+    for (let i = 0; i < n; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const sec = byDate.get(isoDayKey(d)) ?? 0;
+      total += sec;
+      if (sec > 0) active++;
+    }
+    return { total, active };
+  }
+
+  const w = nDays(7);
+  const m = nDays(30);
+
+  // Current streak: consecutive days back from today with seconds>0
+  let streak = 0;
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    if ((byDate.get(isoDayKey(d)) ?? 0) > 0) streak++;
+    else break;
+  }
+
+  let best: { date: string; seconds: number } | null = null;
+  const wdTotals = [0, 0, 0, 0, 0, 0, 0];
+  const wdCounts = [0, 0, 0, 0, 0, 0, 0];
+  for (const d of days) {
+    if (!best || d.seconds > best.seconds) {
+      if (d.seconds > 0) best = { date: d.date, seconds: d.seconds };
+    }
+    const wd = new Date(d.date + "T00:00:00").getDay();
+    wdTotals[wd] += d.seconds;
+    wdCounts[wd] += 1;
+  }
+  const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  let bestWd = 0;
+  let bestAvg = 0;
+  for (let i = 0; i < 7; i++) {
+    const avg = wdCounts[i] > 0 ? wdTotals[i] / wdCounts[i] : 0;
+    if (avg > bestAvg) { bestAvg = avg; bestWd = i; }
+  }
+
+  return {
+    last7: w.total,
+    last30: m.total,
+    daysActive7: w.active,
+    daysActive30: m.active,
+    streak,
+    best,
+    bestWeekday: { name: names[bestWd], avg: bestAvg },
+  };
+}
+
+function isoDayKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function CommitRow({ commit }: { commit: Commit }) {
