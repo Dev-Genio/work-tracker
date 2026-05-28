@@ -43,6 +43,10 @@ export const captureBatches = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }).notNull(),
     runtime: text("runtime").notNull(), // "tauri" | "browser"
+    // Number of frames captured in this batch. We deliberately do NOT store the
+    // JPEG bytes — they're only needed transiently for the VLM call and storing
+    // base64 in Postgres is prohibitively expensive.
+    frameCount: integer("frame_count").notNull().default(0),
     processes: jsonb("processes"),
     system: jsonb("system"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -52,20 +56,9 @@ export const captureBatches = pgTable(
   }),
 );
 
-export const captureEvents = pgTable(
-  "capture_events",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    batchId: uuid("batch_id")
-      .references(() => captureBatches.id, { onDelete: "cascade" })
-      .notNull(),
-    takenAt: timestamp("taken_at", { withTimezone: true }).notNull(),
-    jpegBase64: text("jpeg_base64").notNull(),
-  },
-  (t) => ({
-    batchIdx: index("capture_events_batch_idx").on(t.batchId),
-  }),
-);
+// NOTE: capture_events (which stored base64 JPEG frames) was removed — storing
+// image bytes in Postgres is far too expensive and the frames have no value
+// once the VLM summary is produced. Only the structured summary is persisted.
 
 export const vlmSummaries = pgTable(
   "vlm_summaries",

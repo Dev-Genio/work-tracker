@@ -7,7 +7,9 @@ interface IngestBody {
   runtime: "tauri" | "browser";
   startedAt: string;
   endedAt: string;
-  frames: { takenAt: string; jpegBase64: string }[];
+  /** How many frames were captured this batch. The JPEG bytes are NOT sent or
+   *  stored — they're used client-side for the VLM call only. */
+  frameCount?: number;
   processes?: unknown;
   system?: unknown;
   commits?: {
@@ -41,7 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid json" }, { status: 400 });
   }
 
-  if (!body.startedAt || !body.endedAt || !Array.isArray(body.frames) || !body.summary) {
+  if (!body.startedAt || !body.endedAt || !body.summary) {
     return NextResponse.json({ error: "missing fields" }, { status: 400 });
   }
 
@@ -54,20 +56,11 @@ export async function POST(req: Request) {
       startedAt: new Date(body.startedAt),
       endedAt: new Date(body.endedAt),
       runtime: body.runtime,
+      frameCount: typeof body.frameCount === "number" ? body.frameCount : 0,
       processes: body.processes ?? null,
       system: body.system ?? null,
     })
     .returning({ id: schema.captureBatches.id });
-
-  if (body.frames.length > 0) {
-    await db.insert(schema.captureEvents).values(
-      body.frames.map((f) => ({
-        batchId: batch.id,
-        takenAt: new Date(f.takenAt),
-        jpegBase64: f.jpegBase64,
-      })),
-    );
-  }
 
   await db.insert(schema.vlmSummaries).values({
     batchId: batch.id,

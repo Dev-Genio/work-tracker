@@ -103,7 +103,9 @@ export default function Tracker() {
           runtime: isTauri() ? "tauri" : "browser",
           startedAt: batch.startedAt,
           endedAt: batch.endedAt,
-          frames: enriched.frames,
+          // Only the count — JPEG bytes stay client-side, used for the VLM
+          // call above and then discarded. Never stored in Neon.
+          frameCount: enriched.frames.length,
           processes: enriched.processes ?? null,
           system: enriched.system ?? null,
           commits: enriched.commits ?? [],
