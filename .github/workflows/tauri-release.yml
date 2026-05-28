@@ -10,8 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-macos-arm:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +23,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -41,8 +43,9 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "work-tracker ${{ github.ref_name }}"
           releaseBody: |
-            Windows desktop build of work-tracker.
+            macOS (Apple Silicon / M-series) build of work-tracker.
 
-            The app wraps the deployed web UI and unlocks native capabilities (gh CLI commits, sysinfo, system tray, autostart).
+            The app wraps the deployed web UI and unlocks native capabilities (gh CLI commits, sysinfo, system tray, autostart). Unsigned build — on first launch, right-click → Open to bypass Gatekeeper.
           releaseDraft: true
           prerelease: false
+          args: "--target aarch64-apple-darwin"
