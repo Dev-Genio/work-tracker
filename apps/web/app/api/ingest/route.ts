@@ -91,8 +91,18 @@ export async function POST(req: Request) {
           batchId: batch.id,
         })),
       )
-      .onConflictDoNothing({
+      // Upsert: refresh enrichment when a better payload arrives for a commit
+      // we've already seen (e.g. an older binary stored 0/0 + null body, then
+      // an enriching build re-sends it). Stats take the max so good numbers
+      // never regress to 0; body/message fill in when present.
+      .onConflictDoUpdate({
         target: [schema.commitsSeen.userId, schema.commitsSeen.repo, schema.commitsSeen.sha],
+        set: {
+          message: sql`excluded.message`,
+          body: sql`coalesce(excluded.body, ${schema.commitsSeen.body})`,
+          additions: sql`greatest(${schema.commitsSeen.additions}, excluded.additions)`,
+          deletions: sql`greatest(${schema.commitsSeen.deletions}, excluded.deletions)`,
+        },
       });
   }
 
