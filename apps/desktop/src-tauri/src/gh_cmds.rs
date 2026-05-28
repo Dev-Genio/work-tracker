@@ -135,7 +135,8 @@ fn cache_put(date: &str, r: &GhTodayResult) {
 
 #[tauri::command]
 pub async fn gh_today_commits(since: Option<String>) -> Result<GhTodayResult, String> {
-    let date = since.unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
+    let now = Local::now();
+    let date = since.unwrap_or_else(|| now.format("%Y-%m-%d").to_string());
     if date.len() != 10 || !date.chars().all(|c| c.is_ascii_digit() || c == '-') {
         return Err("invalid since date (expected YYYY-MM-DD)".into());
     }
@@ -143,6 +144,13 @@ pub async fn gh_today_commits(since: Option<String>) -> Result<GhTodayResult, St
     if let Some(cached) = cache_get(&date) {
         return Ok(cached);
     }
+
+    // GitHub's author-date qualifier compares in UTC. Passing a bare local
+    // date drops early-morning-local commits (they're the previous UTC day),
+    // so we send the LOCAL start-of-day with the user's offset, e.g.
+    // 2026-05-29T00:00:00+05:30 — GitHub converts that to UTC correctly.
+    let offset = now.format("%:z").to_string();
+    let since_filter = format!("{}T00:00:00{}", date, offset);
 
     let mut merged: HashMap<(String, String), GhCommit> = HashMap::new();
     let mut warnings: Vec<String> = Vec::new();
@@ -162,7 +170,7 @@ pub async fn gh_today_commits(since: Option<String>) -> Result<GhTodayResult, St
         }
     };
 
-    match gh_search(&author, &date).await {
+    match gh_search(&author, &since_filter).await {
         Ok(rows) => {
             for c in rows {
                 let Some(repo) = c.repository.name_owner() else { continue };
