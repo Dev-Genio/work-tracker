@@ -147,31 +147,42 @@ pub async fn gh_today_commits(since: Option<String>) -> Result<GhTodayResult, St
     let mut merged: HashMap<(String, String), GhCommit> = HashMap::new();
     let mut warnings: Vec<String> = Vec::new();
 
-    // Step 1: gh search commits — twice (author + committer), serially.
-    for (label, flag) in [("--author=@me", "--author"), ("--committer=@me", "--committer")] {
-        match gh_search(&date, flag).await {
-            Ok(rows) => {
-                for c in rows {
-                    let Some(repo) = c.repository.name_owner() else { continue };
-                    let key = (repo.clone(), c.sha.clone());
-                    let full_msg = c.commit.message;
-                    merged.entry(key).or_insert_with(|| {
-                        let (subject, body) = split_message(&full_msg);
-                        GhCommit {
-                            repo,
-                            sha: c.sha,
-                            message: subject,
-                            body,
-                            additions: 0,
-                            deletions: 0,
-                            committed_at: c.commit.committer.date,
-                        }
-                    });
-                }
-            }
-            Err(e) => warnings.push(format!("gh search commits {} failed: {}", label, e)),
+    // Resolve the actual login (e.g. "Varad-13") and search by AUTHOR only.
+    // Using --committer or the literal "@me" pulls in commits the user never
+    // wrote (false matches / merge committers), so we mirror the proven CLI:
+    //   gh search commits --author=<login> --author-date=>=<date>
+    let author = match gh_login().await {
+        Ok(login) => login,
+        Err(e) => {
+            warnings.push(format!(
+                "Could not resolve your GitHub login ({}). Falling back to @me, which may be less accurate. Fix: run `gh auth login`.",
+                e
+            ));
+            "@me".to_string()
         }
-        tokio::time::sleep(Duration::from_millis(750)).await;
+    };
+
+    match gh_search(&author, &date).await {
+        Ok(rows) => {
+            for c in rows {
+                let Some(repo) = c.repository.name_owner() else { continue };
+                let key = (repo.clone(), c.sha.clone());
+                let full_msg = c.commit.message;
+                merged.entry(key).or_insert_with(|| {
+                    let (subject, body) = split_message(&full_msg);
+                    GhCommit {
+                        repo,
+                        sha: c.sha,
+                        message: subject,
+                        body,
+                        additions: 0,
+                        deletions: 0,
+                        committed_at: c.commit.committer.date,
+                    }
+                });
+            }
+        }
+        Err(e) => warnings.push(format!("gh search commits failed: {}", e)),
     }
 
     // Step 2: enrich each commit with stats (additions/deletions) and the
@@ -250,12 +261,36 @@ pub async fn gh_auth_status() -> Result<String, String> {
 
 // ----- Helpers -----------------------------------------------------------
 
-async fn gh_search(date: &str, role_flag: &str) -> Result<Vec<RawCommit>, String> {
+/// Resolves the authenticated GitHub login via `gh api user --jq .login`.
+async fn gh_login() -> Result<String, String> {
+    let mut cmd = Command::new("gh");
+    cmd.arg("api").arg("user").arg("--jq").arg(".login");
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+
+    let out = cmd
+        .output()
+        .await
+        .map_err(|e| explain_spawn_failure(&e.to_string()))?;
+    if !out.status.success() {
+        return Err(explain_gh_failure(
+            out.status.code(),
+            &String::from_utf8_lossy(&out.stderr),
+        ));
+    }
+    let login = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if login.is_empty() {
+        return Err("empty login from gh api user".into());
+    }
+    Ok(login)
+}
+
+async fn gh_search(author: &str, date: &str) -> Result<Vec<RawCommit>, String> {
     let mut cmd = Command::new("gh");
     cmd.arg("search")
         .arg("commits")
-        .arg(format!("{}=@me", role_flag))
-        .arg(format!("--committer-date=>={}", date))
+        .arg(format!("--author={}", author))
+        .arg(format!("--author-date=>={}", date))
         .arg("--json")
         .arg("sha,commit,repository")
         .arg("--limit")
