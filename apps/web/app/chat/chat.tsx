@@ -101,7 +101,7 @@ export default function Chat() {
   const empty = turns.length === 0;
 
   return (
-    <div className="flex flex-col h-[calc(100svh-7rem)]">
+    <div className="flex flex-col min-h-[calc(100svh-8rem)]">
       {/* Header */}
       <div className="mx-auto w-full max-w-2xl px-1 mb-2">
         <h1 className="text-2xl font-semibold tracking-tight">Ask your work history</h1>
@@ -110,8 +110,8 @@ export default function Chat() {
         </p>
       </div>
 
-      {/* Conversation */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Conversation — flows within the app shell's single scroll container */}
+      <div className="flex-1">
         <div className="mx-auto w-full max-w-2xl px-1 py-4 space-y-8">
           {empty && (
             <div className="flex flex-col items-center text-center gap-5 pt-10 animate-in fade-in duration-500">
@@ -180,8 +180,8 @@ export default function Chat() {
         </div>
       </div>
 
-      {/* Composer */}
-      <div className="border-t bg-background/80 backdrop-blur">
+      {/* Composer — sticks to the bottom of the scroll viewport */}
+      <div className="sticky bottom-0 border-t bg-background/80 backdrop-blur">
         <form
           onSubmit={(e) => { e.preventDefault(); void send(); }}
           className="mx-auto w-full max-w-2xl px-1 py-3 flex gap-2"

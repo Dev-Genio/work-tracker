@@ -34,13 +34,17 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-svh bg-background text-foreground">
-      <div className="flex">
+    <div className="h-svh overflow-hidden bg-background text-foreground">
+      <div className="flex h-full">
         <DesktopSidebar />
-        <main className="flex-1 min-w-0">
+        <main className="flex-1 min-w-0 h-full flex flex-col">
           <TopBar user={user} />
-          <div className="px-4 md:px-8 py-6 md:py-8 max-w-[1200px] mx-auto">
-            {children}
+          {/* Single scroll container for all page content — prevents the
+              double scrollbar that appears when a page also scrolls. */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <div className="px-4 md:px-8 py-6 md:py-8 max-w-[1200px] mx-auto">
+              {children}
+            </div>
           </div>
         </main>
       </div>
