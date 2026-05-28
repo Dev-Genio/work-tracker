@@ -172,6 +172,13 @@ function buildGrid(
     if (prev && prev.label === m) prev.weeks++;
     else monthSpans.push({ label: m, weeks: 1 });
   }
+  // Blank the label on narrow (<2 week) spans — these are the leading/
+  // trailing partial months. The empty span still reserves its columns so
+  // every remaining label stays aligned; this prevents adjacent short
+  // months (e.g. a 1-week "Nov" sitting on top of "Dec") from overlapping.
+  for (const span of monthSpans) {
+    if (span.weeks < 2) span.label = "";
+  }
 
   return { weeks, max, monthSpans };
 }
