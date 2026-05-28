@@ -1,8 +1,7 @@
 "use client";
 
 import type { CaptureBatch, VlmSummary } from "@work-tracker/shared";
-
-const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+import { chatCompletion, resolveTarget } from "@/lib/llm";
 
 const SYSTEM_PROMPT = `You analyze a short series of screenshots from a user's work session, plus optional context (running processes, recent git commits, CPU/memory).
 Return ONE JSON object describing what the user was working on, matching this TypeScript type EXACTLY:
@@ -18,7 +17,9 @@ Return ONE JSON object describing what the user was working on, matching this Ty
 Return ONLY the JSON. No prose, no markdown fences.`;
 
 export interface VlmCallOptions {
-  apiKey: string;
+  /** Ignored unless using OpenRouter (the provider/target is resolved from
+   *  device settings). Kept for backwards-compatible call sites. */
+  apiKey?: string;
   model: string;
   batch: CaptureBatch;
   maxFrames?: number; // cap to keep payload small; default 6
@@ -26,7 +27,6 @@ export interface VlmCallOptions {
 
 export interface VlmResult {
   summary: VlmSummary;
-  raw: unknown;
 }
 
 export async function callVlm(opts: VlmCallOptions): Promise<VlmResult> {
@@ -48,32 +48,19 @@ export async function callVlm(opts: VlmCallOptions): Promise<VlmResult> {
     })),
   ];
 
-  const body = {
+  const text = await chatCompletion({
+    target: resolveTarget(),
     model: opts.model,
+    jsonObject: true,
+    temperature: 0.2,
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content },
     ],
-    response_format: { type: "json_object" },
-    temperature: 0.2,
-  };
-
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${opts.apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": typeof window !== "undefined" ? window.location.origin : "",
-      "X-Title": "work-tracker",
-    },
-    body: JSON.stringify(body),
   });
 
-  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
-  const raw = await res.json();
-  const text: string = raw?.choices?.[0]?.message?.content ?? "";
   const summary = parseSummary(text);
-  return { summary, raw };
+  return { summary };
 }
 
 function buildUserText(batch: CaptureBatch): string {

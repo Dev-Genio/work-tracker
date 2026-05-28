@@ -2,8 +2,7 @@
 
 import { formatDigest } from "@/lib/digest";
 import { dataGet } from "@/lib/data-client";
-
-const CHAT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+import { chatCompletion } from "@/lib/llm";
 
 export interface ReportRequest {
   apiKey: string;
@@ -84,26 +83,14 @@ export async function generateReport(req: ReportRequest): Promise<string> {
     .filter(Boolean)
     .join("\n");
 
-  const res = await fetch(CHAT_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${req.apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": typeof window !== "undefined" ? window.location.origin : "",
-      "X-Title": "work-tracker",
-    },
-    body: JSON.stringify({
-      model: req.model,
-      messages: [
-        { role: "system", content: SYSTEM },
-        { role: "user", content: userMsg },
-      ],
-      temperature: 0.3,
-    }),
+  const md = await chatCompletion({
+    model: req.model,
+    temperature: 0.3,
+    messages: [
+      { role: "system", content: SYSTEM },
+      { role: "user", content: userMsg },
+    ],
   });
-  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  const md: string = json?.choices?.[0]?.message?.content ?? "";
   // Strip leading/trailing ``` fences if the model wrapped the whole thing.
   return md.replace(/^```(?:markdown)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
 }

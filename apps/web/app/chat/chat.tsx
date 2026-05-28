@@ -14,9 +14,9 @@ import { cn } from "@/lib/utils";
 import { runAgent, type TraceStep } from "@/lib/agent";
 import { fetchTodayDigest } from "@/lib/digest";
 import { dataGetSettings } from "@/lib/data-client";
+import { providerReady } from "@/lib/llm";
 import {
   DEFAULT_SETTINGS,
-  getOpenRouterKey,
   type ServerSettings,
 } from "@/lib/settings-store";
 
@@ -59,9 +59,9 @@ export default function Chat() {
   async function send(text?: string) {
     const msg = (text ?? input).trim();
     if (!msg) return;
-    const key = getOpenRouterKey();
-    if (!key) {
-      toast.error("No OpenRouter key — set one in Settings.");
+    const ready = providerReady();
+    if (!ready.ok) {
+      toast.error(ready.reason ?? "Configure an LLM provider in Settings.");
       return;
     }
 
@@ -78,7 +78,7 @@ export default function Chat() {
 
     try {
       const { answer, trace } = await runAgent({
-        apiKey: key,
+        apiKey: "",
         model: settings.chatModel,
         history,
         userMessage: msg,

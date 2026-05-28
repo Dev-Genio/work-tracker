@@ -15,10 +15,10 @@ import { Markdown } from "@/components/markdown";
 
 import { generateReport } from "@/lib/report";
 import { dataGet, dataGetSettings } from "@/lib/data-client";
+import { providerReady } from "@/lib/llm";
 import { isoDate } from "@/lib/time";
 import {
   DEFAULT_SETTINGS,
-  getOpenRouterKey,
   type ServerSettings,
 } from "@/lib/settings-store";
 
@@ -83,16 +83,16 @@ export default function ReportBuilder() {
   }
 
   async function generate() {
-    const key = getOpenRouterKey();
-    if (!key) {
-      toast.error("Set your OpenRouter key in Settings first.");
+    const ready = providerReady();
+    if (!ready.ok) {
+      toast.error(ready.reason ?? "Configure an LLM provider in Settings.");
       return;
     }
     setGenerating(true);
     setReport("");
     try {
       const md = await generateReport({
-        apiKey: key,
+        apiKey: "",
         model: settings.chatModel,
         fromIso: new Date(from + "T00:00:00").toISOString(),
         toIso: new Date(to + "T23:59:59").toISOString(),

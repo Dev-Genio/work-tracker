@@ -6,8 +6,7 @@
 //   until model emits {final: "..."}.
 
 import { dataGet } from "@/lib/data-client";
-
-const CHAT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+import { chatCompletion } from "@/lib/llm";
 
 export type Tool =
   | "day_digest"
@@ -289,25 +288,10 @@ async function callModel(
   model: string,
   messages: Message[],
 ): Promise<string> {
-  const res = await fetch(CHAT_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer":
-        typeof window !== "undefined" ? window.location.origin : "",
-      "X-Title": "work-tracker",
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-    }),
-  });
-  if (!res.ok) throw new Error(`OpenRouter ${res.status}: ${await res.text()}`);
-  const json = await res.json();
-  return json?.choices?.[0]?.message?.content ?? "";
+  // Provider/endpoint resolved from device settings (OpenRouter or LM Studio).
+  // apiKey is unused here but kept for the existing call signature.
+  void apiKey;
+  return chatCompletion({ model, messages, jsonObject: true, temperature: 0.2 });
 }
 
 function extractJson(text: string): Record<string, unknown> | null {

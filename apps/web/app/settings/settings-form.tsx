@@ -22,17 +22,18 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 
-import {
-  fetchFreeChatModels,
-  fetchFreeVisionModels,
-  validateKey,
-  type OpenRouterModel,
-} from "@/lib/openrouter";
+import { listModels, type ProviderModel } from "@/lib/llm";
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_LMSTUDIO_URL,
   clearOpenRouterKey,
+  getLmStudioUrl,
   getOpenRouterKey,
+  getProvider,
+  setLmStudioUrl,
   setOpenRouterKey,
+  setProvider,
+  type LlmProvider,
   type ServerSettings,
 } from "@/lib/settings-store";
 import { ghAuthStatus, isAutostartEnabled, setAutostart } from "@/lib/tauri-bridge";
@@ -51,8 +52,10 @@ export default function SettingsForm() {
   const [key, setKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [keyStatus, setKeyStatus] = useState<KeyStatus>("unknown");
-  const [visionModels, setVisionModels] = useState<OpenRouterModel[]>([]);
-  const [chatModels, setChatModels] = useState<OpenRouterModel[]>([]);
+  const [provider, setProviderState] = useState<LlmProvider>("openrouter");
+  const [lmUrl, setLmUrl] = useState(DEFAULT_LMSTUDIO_URL);
+  const [visionModels, setVisionModels] = useState<ProviderModel[]>([]);
+  const [chatModels, setChatModels] = useState<ProviderModel[]>([]);
   const [settings, setSettings] = useState<ServerSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -66,6 +69,8 @@ export default function SettingsForm() {
   useEffect(() => {
     setMode(getStorageMode());
     if (getStorageMode() === "local") void localUsage().then(setUsage);
+    setProviderState(getProvider());
+    setLmUrl(getLmStudioUrl());
     const k = getOpenRouterKey() ?? "";
     setKey(k);
     const inTauri = isTauri();
@@ -84,37 +89,50 @@ export default function SettingsForm() {
       .finally(() => setLoading(false));
   }, []);
 
-  const validate = useCallback(async () => {
-    if (!key.trim()) {
-      setKeyStatus("invalid");
-      setVisionModels([]);
-      setChatModels([]);
-      return;
-    }
+  // Loads models for the currently-selected provider. For OpenRouter we
+  // persist + use the key and keep only free models (vision-filtered for the
+  // VLM picker). For LM Studio we hit its /v1/models on the configured URL.
+  const loadModels = useCallback(async () => {
     setKeyStatus("checking");
     try {
-      const ok = await validateKey(key.trim());
-      if (!ok) {
-        setKeyStatus("invalid");
-        toast.error("Invalid OpenRouter key.");
-        return;
+      if (provider === "openrouter") {
+        if (!key.trim()) {
+          setKeyStatus("invalid");
+          setVisionModels([]);
+          setChatModels([]);
+          return;
+        }
+        setOpenRouterKey(key.trim());
+      } else {
+        setLmStudioUrl(lmUrl);
       }
+      const models = await listModels();
       setKeyStatus("valid");
-      const [vision, chat] = await Promise.all([
-        fetchFreeVisionModels(key.trim()),
-        fetchFreeChatModels(key.trim()),
-      ]);
-      setVisionModels(vision);
-      setChatModels(chat);
+      const free = provider === "openrouter" ? models.filter((m) => m.free) : models;
+      setVisionModels(free.filter((m) => m.vision));
+      setChatModels(free);
+      if (provider === "lmstudio") toast.success(`Connected — ${models.length} model(s).`);
     } catch (e) {
       setKeyStatus("invalid");
       toast.error(String(e));
     }
-  }, [key]);
+  }, [provider, key, lmUrl]);
 
+  // Auto-load once when the relevant config is present.
   useEffect(() => {
-    if (key && keyStatus === "unknown") void validate();
-  }, [key, keyStatus, validate]);
+    if (keyStatus !== "unknown") return;
+    if (provider === "openrouter" && key) void loadModels();
+    if (provider === "lmstudio" && lmUrl) void loadModels();
+  }, [provider, key, lmUrl, keyStatus, loadModels]);
+
+  function switchProvider(p: LlmProvider) {
+    if (p === provider) return;
+    setProvider(p);
+    setProviderState(p);
+    setKeyStatus("unknown");
+    setVisionModels([]);
+    setChatModels([]);
+  }
 
   function switchMode(next: StorageMode) {
     if (next === mode) return;
@@ -243,47 +261,93 @@ export default function SettingsForm() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            OpenRouter API key
+            LLM provider
             <KeyBadge status={keyStatus} count={visionModels.length} />
           </CardTitle>
           <CardDescription>
-            Stored in your browser only. Never sent to our server.
+            Use OpenRouter (cloud) or LM Studio (fully on-device). Settings stay
+            in your browser.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Input
-                type={showKey ? "text" : "password"}
-                placeholder="sk-or-..."
-                value={key}
-                onChange={(e) => {
-                  setKey(e.target.value);
-                  setKeyStatus("unknown");
-                }}
-                className="pr-9 font-mono text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => setShowKey((v) => !v)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                aria-label={showKey ? "Hide key" : "Show key"}
-              >
-                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </button>
-            </div>
-            <Button onClick={validate} disabled={keyStatus === "checking" || !key.trim()} variant="secondary">
-              {keyStatus === "checking" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {keyStatus === "checking" ? "Checking" : "Validate"}
-            </Button>
+        <CardContent className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <ModeOption
+              active={provider === "openrouter"}
+              title="OpenRouter"
+              desc="Hosted models. Needs an API key."
+              onClick={() => switchProvider("openrouter")}
+            />
+            <ModeOption
+              active={provider === "lmstudio"}
+              title="LM Studio (local)"
+              desc="Runs models on this machine. No data leaves the device."
+              onClick={() => switchProvider("lmstudio")}
+            />
           </div>
+
+          {provider === "openrouter" ? (
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  type={showKey ? "text" : "password"}
+                  placeholder="sk-or-..."
+                  value={key}
+                  onChange={(e) => {
+                    setKey(e.target.value);
+                    setKeyStatus("unknown");
+                  }}
+                  className="pr-9 font-mono text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  aria-label={showKey ? "Hide key" : "Show key"}
+                >
+                  {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <Button onClick={loadModels} disabled={keyStatus === "checking" || !key.trim()} variant="secondary">
+                {keyStatus === "checking" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {keyStatus === "checking" ? "Checking" : "Validate"}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="lmurl">LM Studio server URL</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="lmurl"
+                  value={lmUrl}
+                  onChange={(e) => {
+                    setLmUrl(e.target.value);
+                    setKeyStatus("unknown");
+                  }}
+                  placeholder={DEFAULT_LMSTUDIO_URL}
+                  className="flex-1 font-mono text-sm"
+                />
+                <Button onClick={loadModels} disabled={keyStatus === "checking" || !lmUrl.trim()} variant="secondary">
+                  {keyStatus === "checking" && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                  {keyStatus === "checking" ? "Connecting" : "Connect"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Start LM Studio → Developer tab → enable the local server (and CORS).
+                Load a vision model for tracking. Default: <code>{DEFAULT_LMSTUDIO_URL}</code>
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle>Models</CardTitle>
-          <CardDescription>Free OpenRouter models. Vision for tracking; any free model for the chat agent.</CardDescription>
+          <CardDescription>
+            {provider === "openrouter"
+              ? "Free OpenRouter models. Vision for tracking; any free model for chat."
+              : "Models available in LM Studio. Pick a vision model for tracking."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <ModelPicker
@@ -292,7 +356,7 @@ export default function SettingsForm() {
             options={visionModels}
             disabled={loading || keyStatus !== "valid"}
             onChange={(v) => setSettings({ ...settings, vlmModel: v })}
-            empty="Validate your key to load free vision models."
+            empty={provider === "openrouter" ? "Validate your key to load vision models." : "Connect to LM Studio to load models."}
           />
           <ModelPicker
             label="Chat model (Ask)"
@@ -300,7 +364,7 @@ export default function SettingsForm() {
             options={chatModels}
             disabled={loading || keyStatus !== "valid"}
             onChange={(v) => setSettings({ ...settings, chatModel: v })}
-            empty="Validate your key to load free chat models."
+            empty={provider === "openrouter" ? "Validate your key to load chat models." : "Connect to LM Studio to load models."}
           />
         </CardContent>
       </Card>
@@ -454,7 +518,7 @@ function ModelPicker({
 }: {
   label: string;
   value: string;
-  options: OpenRouterModel[];
+  options: ProviderModel[];
   disabled: boolean;
   onChange: (v: string) => void;
   empty: string;

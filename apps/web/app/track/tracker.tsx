@@ -18,9 +18,9 @@ import { dataGetSettings, dataIngest } from "@/lib/data-client";
 import { ghTodayDetailed, listProcesses, onTrayToggle, systemStats } from "@/lib/tauri-bridge";
 import {
   DEFAULT_SETTINGS,
-  getOpenRouterKey,
   type ServerSettings,
 } from "@/lib/settings-store";
+import { providerReady } from "@/lib/llm";
 
 type LogLine = { t: string; msg: string; kind: "info" | "ok" | "err" };
 
@@ -60,10 +60,10 @@ export default function Tracker() {
   }
 
   async function handleBatch(batch: CaptureBatch) {
-    const key = getOpenRouterKey();
-    if (!key) {
-      append("err", "No OpenRouter key.");
-      toast.error("Set your OpenRouter key in Settings first.");
+    const ready = providerReady();
+    if (!ready.ok) {
+      append("err", ready.reason ?? "LLM provider not configured.");
+      toast.error(ready.reason ?? "Configure an LLM provider in Settings.");
       return;
     }
     append("info", `Batch ready: ${batch.frames.length} frames`);
@@ -93,7 +93,7 @@ export default function Tracker() {
 
     try {
       append("info", "Calling VLM…");
-      const { summary } = await callVlm({ apiKey: key, model: settings.vlmModel, batch: enriched });
+      const { summary } = await callVlm({ model: settings.vlmModel, batch: enriched });
       setLastSummary(summary);
 
       await dataIngest({
