@@ -8,6 +8,7 @@
 const CHAT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 
 export type Tool =
+  | "day_digest"
   | "search_logs"
   | "aggregate_time"
   | "get_commits"
@@ -69,6 +70,19 @@ function sanitize(v: unknown): unknown {
 }
 
 const TOOLS: ToolDef[] = [
+  {
+    name: "day_digest",
+    description:
+      "THE PRIMARY TOOL for 'what did I do on <day/range>'. Returns the COMPLETE day condensed in one call: total time, focus, project & app breakdowns, merged activity time-blocks (not raw 1-min sessions), and commits. Use this instead of paging search_logs. Works for a single day or a small range.",
+    argsHint:
+      '{ "from": ISO datetime (local day start, e.g. 2026-05-27T00:00:00+05:30), "to": ISO datetime (local day end) }',
+    execute: async (args) => {
+      const p = new URLSearchParams();
+      for (const [k, v] of Object.entries(args)) if (v != null) p.set(k, String(v));
+      const r = await fetch(`/api/rag/day?${p}`);
+      return sanitize(await r.json());
+    },
+  },
   {
     name: "search_logs",
     description:
@@ -147,10 +161,11 @@ On EVERY turn, return ONLY a single JSON object — no prose, no markdown fences
 { "thought": string, "tool": "<name>", "args": { ... } }   // to call a tool
 { "final": string }                                        // to end the conversation
 
-Notes on data shape:
-- A "session" is a short captured batch (~1 min). Totals are best answered with aggregate_time, NOT by counting search_logs rows (search is capped and returns only a sample of the newest matches).
-- For "how long / how many hours" questions, prefer aggregate_time.
-- search_logs returns at most a sample; never claim it's the complete set.
+Notes on data shape & tool choice:
+- A "session" is a short captured batch (~1 min). A busy day has 100-300 of them, so NEVER try to reconstruct a day by paging search_logs — it's capped and returns only the newest matches, and you will loop without ever seeing the morning.
+- For "what did I do on <day>" → use day_digest. It returns the whole day already condensed into time-blocks + breakdowns + commits in ONE call.
+- For "how long / how many hours" → use aggregate_time (or read totalSeconds from day_digest).
+- Use search_logs ONLY for keyword lookups ("find sessions about X"); treat its output as a sample, never the complete set.
 
 Strict rules for the FINAL answer:
 - Write in clear natural language. Markdown is allowed and encouraged (headings, bullet lists, bold) — it will be rendered.
