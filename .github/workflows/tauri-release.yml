@@ -46,6 +46,6 @@ jobs:
             macOS (Apple Silicon / M-series) build of work-tracker.
 
             The app wraps the deployed web UI and unlocks native capabilities (gh CLI commits, sysinfo, system tray, autostart). Unsigned build — on first launch, right-click → Open to bypass Gatekeeper.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: "--target aarch64-apple-darwin"
