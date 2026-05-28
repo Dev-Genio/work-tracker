@@ -227,16 +227,11 @@ export default function Today() {
           {heatmapDays.length === 0 ? (
             <Skeleton className="h-24 w-full rounded-md" />
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,auto)_1fr] gap-6 items-center">
-              <div className="min-w-0 overflow-hidden">
-                <ActivityHeatmap
-                  days={heatmapDays}
-                  fromIso={heatmapRange.fromIso}
-                  toIso={heatmapRange.toIso}
-                />
-              </div>
-              <HeatmapRollups days={heatmapDays} />
-            </div>
+            <HeatmapBento
+              days={heatmapDays}
+              fromIso={heatmapRange.fromIso}
+              toIso={heatmapRange.toIso}
+            />
           )}
         </CardContent>
       </Card>
@@ -402,15 +397,32 @@ export default function Today() {
   );
 }
 
-function HeatmapRollups({ days }: { days: HeatmapDay[] }) {
+function HeatmapBento({
+  days, fromIso, toIso,
+}: { days: HeatmapDay[]; fromIso: string; toIso: string }) {
   const stats = useMemo(() => computeRollups(days), [days]);
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <Tile label="Last 7 days" value={formatHm(stats.last7)} sub={`${stats.daysActive7}/7 days active`} />
-      <Tile label="Last 30 days" value={formatHm(stats.last30)} sub={`${stats.daysActive30}/30 days active`} />
-      <Tile label="Current streak" value={`${stats.streak}d`} sub={stats.streak > 0 ? "Keep it up" : "Start one today"} />
-      <Tile label="Best day" value={stats.best ? formatHm(stats.best.seconds) : "—"} sub={stats.best ? stats.best.date : "no data yet"} />
-      <Tile className="sm:col-span-2" label="Most active weekday" value={stats.bestWeekday.name} sub={`avg ${formatHm(stats.bestWeekday.avg)}`} />
+    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,auto)_1fr] gap-6 items-stretch">
+      {/* Left: heatmap on top, "most active weekday" fills the space below it */}
+      <div className="flex flex-col gap-4 min-w-0">
+        <div className="min-w-0 overflow-hidden">
+          <ActivityHeatmap days={days} fromIso={fromIso} toIso={toIso} />
+        </div>
+        <Tile
+          className="mt-auto"
+          label="Most active weekday"
+          value={stats.bestWeekday.name}
+          sub={`avg ${formatHm(stats.bestWeekday.avg)}`}
+        />
+      </div>
+
+      {/* Right: 2×2 KPI tiles */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+        <Tile label="Last 7 days" value={formatHm(stats.last7)} sub={`${stats.daysActive7}/7 days active`} />
+        <Tile label="Last 30 days" value={formatHm(stats.last30)} sub={`${stats.daysActive30}/30 days active`} />
+        <Tile label="Current streak" value={`${stats.streak}d`} sub={stats.streak > 0 ? "Keep it up" : "Start one today"} />
+        <Tile label="Best day" value={stats.best ? formatHm(stats.best.seconds) : "—"} sub={stats.best ? stats.best.date : "no data yet"} />
+      </div>
     </div>
   );
 }
