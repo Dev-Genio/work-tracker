@@ -21,6 +21,7 @@ import {
   type ServerSettings,
 } from "@/lib/settings-store";
 import { providerReady } from "@/lib/llm";
+import { getStorageMode } from "@/lib/storage-mode";
 
 type LogLine = { t: string; msg: string; kind: "info" | "ok" | "err" };
 
@@ -33,9 +34,11 @@ export default function Tracker() {
   const [settings, setSettings] = useState<ServerSettings>(DEFAULT_SETTINGS);
   const [log, setLog] = useState<LogLine[]>([]);
   const [tauri, setTauri] = useState(false);
+  const [storageMode, setStorageModeState] = useState<"cloud" | "local">("cloud");
 
   useEffect(() => {
     setTauri(isTauri());
+    setStorageModeState(getStorageMode());
     dataGetSettings()
       .then((s) => setSettings({
         vlmModel: s.vlmModel, chatModel: s.chatModel,
@@ -167,12 +170,16 @@ export default function Tracker() {
                 <div className="font-medium">
                   {running ? (paused ? "Paused" : "Tracking") : "Idle"}
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Runtime: <Badge variant="outline" className="ml-1 align-middle">{tauri ? "tauri" : "browser"}</Badge>
-                  <span className="mx-2">·</span>
-                  every {settings.captureIntervalSec}s
-                  <span className="mx-2">·</span>
-                  batch every {Math.round(settings.batchIntervalSec / 60)} min
+                <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span>Runtime</span>
+                  <Badge variant="outline" className="align-middle">{tauri ? "tauri" : "browser"}</Badge>
+                  <span>·</span>
+                  <span>Saving to</span>
+                  <Badge variant={storageMode === "local" ? "secondary" : "default"} className="align-middle">
+                    {storageMode === "local" ? "this device" : "cloud account"}
+                  </Badge>
+                  <span>·</span>
+                  <span>every {settings.captureIntervalSec}s, batch {Math.round(settings.batchIntervalSec / 60)}m</span>
                 </div>
               </div>
             </div>
