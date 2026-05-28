@@ -402,26 +402,21 @@ function HeatmapBento({
 }: { days: HeatmapDay[]; fromIso: string; toIso: string }) {
   const stats = useMemo(() => computeRollups(days), [days]);
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,auto)_1fr] gap-6 items-stretch">
-      {/* Left: heatmap on top, "most active weekday" fills the space below it */}
-      <div className="flex flex-col gap-4 min-w-0">
-        <div className="min-w-0 overflow-hidden">
+    <div className="space-y-5">
+      {/* Heatmap centered so its leftover horizontal space is balanced */}
+      <div className="overflow-x-auto">
+        <div className="w-fit mx-auto">
           <ActivityHeatmap days={days} fromIso={fromIso} toIso={toIso} />
         </div>
-        <Tile
-          className="mt-auto"
-          label="Most active weekday"
-          value={stats.bestWeekday.name}
-          sub={`avg ${formatHm(stats.bestWeekday.avg)}`}
-        />
       </div>
 
-      {/* Right: 2×2 KPI tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+      {/* One tidy full-width row of rollups */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <Tile label="Last 7 days" value={formatHm(stats.last7)} sub={`${stats.daysActive7}/7 days active`} />
         <Tile label="Last 30 days" value={formatHm(stats.last30)} sub={`${stats.daysActive30}/30 days active`} />
         <Tile label="Current streak" value={`${stats.streak}d`} sub={stats.streak > 0 ? "Keep it up" : "Start one today"} />
         <Tile label="Best day" value={stats.best ? formatHm(stats.best.seconds) : "—"} sub={stats.best ? stats.best.date : "no data yet"} />
+        <Tile label="Top weekday" value={stats.bestWeekday.name} sub={`avg ${formatHm(stats.bestWeekday.avg)}`} />
       </div>
     </div>
   );
