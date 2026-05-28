@@ -63,7 +63,12 @@ export async function chatCompletion(opts: ChatOptions): Promise<string> {
     messages: opts.messages,
     temperature: opts.temperature ?? 0.2,
   };
-  if (opts.jsonObject) body.response_format = { type: "json_object" };
+  // OpenRouter supports response_format: json_object. LM Studio's endpoint
+  // only accepts 'json_schema' or 'text', so we omit it there and rely on the
+  // prompt + our lenient JSON extraction instead.
+  if (opts.jsonObject && target.provider === "openrouter") {
+    body.response_format = { type: "json_object" };
+  }
 
   const res = await fetch(`${target.baseUrl}/chat/completions`, {
     method: "POST",

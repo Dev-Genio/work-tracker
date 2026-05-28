@@ -1,13 +1,15 @@
 name: tauri-release
 
+# The org disables write permissions for the workflow GITHUB_TOKEN, so CI
+# cannot create GitHub Releases directly. Instead we BUILD the macOS (Apple
+# Silicon) bundle and upload it as a workflow artifact; the release is then
+# published with a user token (`gh release create`) — see README/release docs.
+
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build-macos-arm:
@@ -34,18 +36,18 @@ jobs:
       - name: Install npm deps
         run: npm install --legacy-peer-deps
 
-      - name: Build & release with tauri-action
+      - name: Build app bundle
         uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: ./apps/desktop
-          tagName: ${{ github.ref_name }}
-          releaseName: "work-tracker ${{ github.ref_name }}"
-          releaseBody: |
-            macOS (Apple Silicon / M-series) build of work-tracker.
-
-            The app wraps the deployed web UI and unlocks native capabilities (gh CLI commits, sysinfo, system tray, autostart). Unsigned build — on first launch, right-click → Open to bypass Gatekeeper.
-          releaseDraft: false
-          prerelease: false
           args: "--target aarch64-apple-darwin"
+
+      - name: Upload bundle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: work-tracker-macos-arm64
+          if-no-files-found: error
+          path: |
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz
+            apps/desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz.sig
