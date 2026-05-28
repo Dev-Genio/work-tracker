@@ -118,4 +118,32 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* Minimal "ghost" scrollbars everywhere — overrides system defaults.
+     Firefox / standards */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent) transparent;
+  }
+
+  /* WebKit / Chromium */
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--foreground) 15%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--foreground) 30%, transparent);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
