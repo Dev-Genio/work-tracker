@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Markdown } from "@/components/markdown";
 
 import { generateReport } from "@/lib/report";
 import { isoDate } from "@/lib/time";
@@ -267,9 +268,7 @@ export default function ReportBuilder() {
           </CardHeader>
           <CardContent>
             <Separator className="mb-4" />
-            <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
-              {report}
-            </pre>
+            <Markdown>{report}</Markdown>
           </CardContent>
         </Card>
       )}
