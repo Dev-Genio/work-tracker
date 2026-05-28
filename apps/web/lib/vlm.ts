@@ -27,6 +27,9 @@ export interface VlmCallOptions {
 
 export interface VlmResult {
   summary: VlmSummary;
+  /** The model's raw structured response (parsed JSON, or { text } if it
+   *  wasn't valid JSON). Persisted to vlm_summaries.raw_json. */
+  raw: unknown;
 }
 
 export async function callVlm(opts: VlmCallOptions): Promise<VlmResult> {
@@ -76,7 +79,8 @@ export async function callVlm(opts: VlmCallOptions): Promise<VlmResult> {
   });
 
   const summary = parseSummary(text);
-  return { summary };
+  const raw = extractJson(text) ?? { text };
+  return { summary, raw };
 }
 
 function buildUserText(batch: CaptureBatch): string {

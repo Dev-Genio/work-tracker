@@ -96,7 +96,7 @@ export default function Tracker() {
 
     try {
       append("info", "Calling VLM…");
-      const { summary } = await callVlm({ model: settings.vlmModel, batch: enriched });
+      const { summary, raw } = await callVlm({ model: settings.vlmModel, batch: enriched });
       setLastSummary(summary);
 
       await dataIngest({
@@ -111,6 +111,7 @@ export default function Tracker() {
         commits: enriched.commits ?? [],
         model: settings.vlmModel,
         summary,
+        rawJson: raw,
       });
       append("ok", summary.activity);
       setFrames(0);

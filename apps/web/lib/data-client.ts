@@ -42,8 +42,10 @@ export async function dataGet<T = unknown>(
   return (await res.json()) as T;
 }
 
-/** Persist a captured batch. */
-export async function dataIngest(body: Parameters<typeof local.localIngest>[0]): Promise<void> {
+/** Persist a captured batch. rawJson is forwarded to the cloud API only. */
+export async function dataIngest(
+  body: Parameters<typeof local.localIngest>[0] & { rawJson?: unknown },
+): Promise<void> {
   if (isLocalMode()) {
     await local.localIngest(body);
     return;
