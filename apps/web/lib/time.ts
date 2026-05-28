@@ -33,5 +33,11 @@ export function parseRange(searchParams: URLSearchParams): { from: Date; to: Dat
 }
 
 export function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Local date (YYYY-MM-DD), NOT UTC. Using toISOString() here shifted "today"
+  // to the UTC day, which near local midnight produced the wrong day and a
+  // misaligned query range.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
