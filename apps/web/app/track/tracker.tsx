@@ -22,6 +22,7 @@ import {
 } from "@/lib/settings-store";
 import { providerReady } from "@/lib/llm";
 import { getStorageMode } from "@/lib/storage-mode";
+import { getProvider } from "@/lib/settings-store";
 
 type LogLine = { t: string; msg: string; kind: "info" | "ok" | "err" };
 
@@ -35,10 +36,12 @@ export default function Tracker() {
   const [log, setLog] = useState<LogLine[]>([]);
   const [tauri, setTauri] = useState(false);
   const [storageMode, setStorageModeState] = useState<"cloud" | "local">("cloud");
+  const [provider, setProvider] = useState<"openrouter" | "lmstudio">("openrouter");
 
   useEffect(() => {
     setTauri(isTauri());
     setStorageModeState(getStorageMode());
+    setProvider(getProvider());
     dataGetSettings()
       .then((s) => setSettings({
         vlmModel: s.vlmModel, chatModel: s.chatModel,
@@ -181,6 +184,12 @@ export default function Tracker() {
                   </Badge>
                   <span>·</span>
                   <span>every {settings.captureIntervalSec}s, batch {Math.round(settings.batchIntervalSec / 60)}m</span>
+                </div>
+                <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
+                  <span>VLM</span>
+                  <Badge variant="outline" className="align-middle font-mono">
+                    {provider === "lmstudio" ? "LM Studio" : "OpenRouter"} · {settings.vlmModel}
+                  </Badge>
                 </div>
               </div>
             </div>
