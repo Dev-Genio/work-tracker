@@ -114,8 +114,7 @@ function sampleEvenly<T>(arr: T[], k: number): T[] {
 }
 
 function parseSummary(text: string): VlmSummary {
-  const json = extractJson(text);
-  const obj = typeof json === "object" && json ? (json as Record<string, unknown>) : {};
+  const obj = summaryObject(extractJson(text));
   return {
     activity: str(obj.activity) ?? "(no activity)",
     app: str(obj.app),
@@ -123,6 +122,16 @@ function parseSummary(text: string): VlmSummary {
     tasks: Array.isArray(obj.tasks) ? obj.tasks.filter((x): x is string => typeof x === "string") : [],
     focusScore: clamp01(num(obj.focusScore)),
   };
+}
+
+/** Normalize a parsed VLM response to the summary object. Some models
+ *  (e.g. qwen via LM Studio) wrap the object in a single-element array. */
+function summaryObject(json: unknown): Record<string, unknown> {
+  let v = json;
+  if (Array.isArray(v)) v = v[0];
+  return v && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : {};
 }
 
 function extractJson(text: string): unknown {
